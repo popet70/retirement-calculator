@@ -97,9 +97,9 @@ const RetirementCalculator = () => {
   };
 
   const runFormalTests = () => {
-    const results = {};
-    Object.keys(formalTests).forEach(key => {
-      const test = formalTests[key];
+    const results: any = {};
+    Object.keys(formalTests).forEach((key: string) => {
+      const test = formalTests[key as keyof typeof formalTests];
       const simResult = runSimulation(test.returns, test.cpi, test.health, test.years);
       const targetYears = test.years;
       const passed = simResult && simResult.length >= targetYears && simResult[simResult.length - 1].totalBalance > 0;
