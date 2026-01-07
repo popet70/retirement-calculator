@@ -971,15 +971,15 @@ const RetirementCalculator = () => {
           </div>
         )}
 
-        {useFormalTest && selectedFormalTest && formalTestResults && formalTestResults[selectedFormalTest] && formalTestResults[selectedFormalTest].simulationData && (
+        {useFormalTest && selectedFormalTest && formalTestResults && formalTestResults[selectedFormalTest as keyof typeof formalTestResults] && (formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData && (
           <div className="bg-white border p-4 rounded mb-6">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-xl font-bold">Detailed View: {formalTestResults[selectedFormalTest].name}</h2>
+              <h2 className="text-xl font-bold">Detailed View: {(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).name}</h2>
               <button onClick={() => setSelectedFormalTest(null)} className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">{formalTestResults[selectedFormalTest].desc}</p>
+            <p className="text-sm text-gray-600 mb-4">{(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).desc}</p>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={formalTestResults[selectedFormalTest].simulationData.map(r => ({
+              <LineChart data={(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData.map(r => ({
                 year: r.year,
                 age: r.age,
                 balance: toDisplayValue(r.totalBalance, r.year),
