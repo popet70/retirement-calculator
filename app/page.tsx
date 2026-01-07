@@ -50,6 +50,7 @@ const RetirementCalculator = () => {
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
   const [oneOffExpenses, setOneOffExpenses] = useState([
+  const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
     { description: 'Major Appliance Replacement', age: 64, amount: 12000 },
     { description: 'Technology Refresh', age: 62, amount: 5000 },
     { description: 'Unexpected Home Repairs', age: 64, amount: 10000 },
@@ -729,99 +730,92 @@ const RetirementCalculator = () => {
               One-Off Expenses
               <InfoTooltip text="Single large expenses in specific years (e.g., car purchase, home repairs, wedding). Not recurring." />
             </h2>
-            {oneOffExpenses.length > 0 && (
-              <button 
-                onClick={() => setOneOffExpenses([])}
-                className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
-              >
-                Clear All
-              </button>
-            )}
-          </div>
-          
-          <div className="space-y-4">
-            {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
-              const actualIndex = oneOffExpenses.findIndex(e => e === expense);
-              return (
-                <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
-                  <div className="flex-1">
-                    <input 
-                      type="text"
-                      placeholder="Description (e.g., New car)"
-                      value={expense.description}
-                      onChange={(e) => {
-                        const newExpenses = [...oneOffExpenses];
-                        newExpenses[actualIndex].description = e.target.value;
-                        setOneOffExpenses(newExpenses);
-                      }}
-                      className="w-full p-2 border rounded"
-                    />
-                  </div>
-                  <div className="w-32">
-                    <label className="text-xs text-gray-600">Age</label>
-                    <input 
-                      type="number"
-                      placeholder="Age"
-                      value={expense.age}
-                      onChange={(e) => {
-                        const newExpenses = [...oneOffExpenses];
-                        newExpenses[actualIndex].age = Number(e.target.value);
-                        setOneOffExpenses(newExpenses);
-                      }}
-                      className="w-full p-2 border rounded"
-                      min="60"
-                      max="100"
-                    />
-                  </div>
-                  <div className="w-40">
-                    <label className="text-xs text-gray-600">Amount</label>
-                    <input 
-                      type="number"
-                      placeholder="Amount"
-                      value={expense.amount}
-                      onChange={(e) => {
-                        const newExpenses = [...oneOffExpenses];
-                        newExpenses[actualIndex].amount = Number(e.target.value);
-                        setOneOffExpenses(newExpenses);
-                      }}
-                      className="w-full p-2 border rounded"
-                      step="1000"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
-                      setOneOffExpenses(newExpenses);
-                    }}
-                    className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                  >
-                    Remove
-                  </button>
-                </div>
-              );
-            })}
-            
             <button 
-              onClick={() => {
-                setOneOffExpenses([...oneOffExpenses, { description: '', age: 65, amount: 50000 }]);
-              }}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+             onClick={() => setShowOneOffExpenses(!showOneOffExpenses)}
+             className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
             >
-              + Add One-Off Expense
-            </button>
-            
-            {oneOffExpenses.length > 0 && (
-              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
-                <div className="font-semibold text-gray-900 mb-2">Summary</div>
-                <div className="text-sm space-y-1">
-                  <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
-                  <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
-                  <div className="text-xs text-gray-600 mt-2">Expenses shown sorted by age above</div>
-                </div>
-              </div>
-            )}
+             {showOneOffExpenses ? '▼ Hide' : '▶ Show'}
+           </button>
+         </div>
+          
+        {showOneOffExpenses && (
+  <div className="space-y-4">
+    {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
+      const actualIndex = oneOffExpenses.findIndex(e => e === expense);
+      return (
+        <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
+          <div className="flex-1">
+            <input 
+              type="text"
+              placeholder="Description (e.g., New car)"
+              value={expense.description}
+              onChange={(e) => {
+                const newExpenses = [...oneOffExpenses];
+                newExpenses[actualIndex].description = e.target.value;
+                setOneOffExpenses(newExpenses);
+              }}
+              className="w-full p-2 border rounded"
+            />
           </div>
+          <div className="w-32">
+            <label className="text-xs text-gray-600">Age</label>
+            <input 
+              type="number"
+              placeholder="Age"
+              value={expense.age}
+              onChange={(e) => {
+                const newExpenses = [...oneOffExpenses];
+                newExpenses[actualIndex].age = Number(e.target.value);
+                setOneOffExpenses(newExpenses);
+              }}
+              className="w-full p-2 border rounded"
+              min="60"
+              max="100"
+            />
+          </div>
+          <div className="w-40">
+            <label className="text-xs text-gray-600">Amount</label>
+            <input 
+              type="number"
+              placeholder="Amount"
+              value={expense.amount}
+              onChange={(e) => {
+                const newExpenses = [...oneOffExpenses];
+                newExpenses[actualIndex].amount = Number(e.target.value);
+                setOneOffExpenses(newExpenses);
+              }}
+              className="w-full p-2 border rounded"
+              step="1000"
+            />
+          </div>
+          <button 
+            onClick={() => {
+              const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
+              setOneOffExpenses(newExpenses);
+            }}
+            className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+          >
+            Remove
+          </button>
         </div>
+      );
+    })}
+    
+    <button 
+      onClick={() => {
+        setOneOffExpenses([...oneOffExpenses, { description: '', age: 65, amount: 50000 }]);
+      }}
+      className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+    >
+      + Add One-Off Expense
+    </button>
+    
+    {oneOffExpenses.length > 0 && (
+      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+        <div className="font-semibold text-gray-900 mb-2">Summary</div>
+        <div className="text-sm space-y-1">
+          <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
+          <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
