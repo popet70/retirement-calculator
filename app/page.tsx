@@ -135,7 +135,7 @@ const RetirementCalculator = () => {
   // Convert value for display
   // Simulation stores values in NOMINAL dollars (inflation-adjusted forward from 2030)
   // year is years from retirement (1-35), where year 1 = age 60 in 2030
-  const toDisplayValue = (value, year = 1) => {
+  const toDisplayValue = (value: number, year = 1) => {
     if (showNominalDollars) {
       // Show nominal - simulation values are already nominal
       return value;
@@ -164,7 +164,7 @@ const RetirementCalculator = () => {
     };
   }, [splurgeAmount, splurgeStartAge, splurgeDuration, baseSpending]);
 
-  const getSpendingMultiplier = (year) => {
+  const getSpendingMultiplier = (year: number) => {
     if (spendingPattern === 'cpi') {
       return 1.0;
     } else {
@@ -182,7 +182,7 @@ const RetirementCalculator = () => {
     }
   };
 
-  const getMinimumDrawdown = (age, balance) => {
+  const getMinimumDrawdown = (age: number, balance: number) => {
     if (balance <= 0) return 0;
     let rate;
     if (age < 65) rate = 0.04;
@@ -195,7 +195,7 @@ const RetirementCalculator = () => {
     return balance * rate;
   };
 
-  const runSimulation = (returnSequence, cpiRate, healthShock, maxYears) => {
+  const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
     let cashAccount = 0;
