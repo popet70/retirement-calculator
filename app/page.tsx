@@ -929,11 +929,11 @@ const RetirementCalculator = () => {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="bg-green-50 p-3 rounded">
                 <div className="text-sm">Passed</div>
-                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter(r => r.passed).length}</div>
+                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter((r: any) => r.passed).length}</div>
               </div>
               <div className="bg-red-50 p-3 rounded">
                 <div className="text-sm">Failed</div>
-                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter(r => !r.passed).length}</div>
+                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter((r: any) => !r.passed).length}</div>
               </div>
               <div className="bg-blue-50 p-3 rounded">
                 <div className="text-sm">Success Rate</div>
