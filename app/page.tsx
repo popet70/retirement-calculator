@@ -50,6 +50,7 @@ const RetirementCalculator = () => {
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
   const [showOneOffExpenses, setShowOneOffExpenses] = useState(true); 
+  const [oneOffExpenses, setOneOffExpenses] = useState([
     { description: 'Major Appliance Replacement', age: 64, amount: 12000 },
     { description: 'Technology Refresh', age: 62, amount: 5000 },
     { description: 'Unexpected Home Repairs', age: 64, amount: 10000 },
