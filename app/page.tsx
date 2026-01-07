@@ -937,7 +937,7 @@ const RetirementCalculator = () => {
               </div>
               <div className="bg-blue-50 p-3 rounded">
                 <div className="text-sm">Success Rate</div>
-                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter(r => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
+                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter((r: any) => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
               </div>
             </div>
             <div className="overflow-x-auto">
