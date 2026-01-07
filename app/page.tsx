@@ -45,7 +45,7 @@ const RetirementCalculator = () => {
   const [returnVolatility, setReturnVolatility] = useState(18);
   const [monteCarloResults, setMonteCarloResults] = useState<any>(null);
   const [formalTestResults, setFormalTestResults] = useState(null);
-  const [selectedFormalTest, setSelectedFormalTest] = useState(null);
+  const [selectedFormalTest, setSelectedFormalTest] = useState<string | null>(null);
   const [splurgeAmount, setSplurgeAmount] = useState(0);
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
