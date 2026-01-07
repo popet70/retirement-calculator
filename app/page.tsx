@@ -988,8 +988,8 @@ const RetirementCalculator = () => {
               }))}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
-                <YAxis tickFormatter={(val) => (val/1000).toFixed(0) + 'k'} />
-                <Tooltip formatter={(val) => formatCurrency(val)} />
+                <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
+                <Tooltip formatter={(val) => formatCurrency(val as number)} />
                 <Legend />
                 <Line type="monotone" dataKey="balance" name="Total Balance" stroke="#2563eb" strokeWidth={2} />
                 <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={1} />
