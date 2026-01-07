@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
-const InfoTooltip = ({ text }) => {
+const InfoTooltip = ({ text }: { text: string }) => {
   return (
     <span style={{ position: 'relative', display: 'inline-block', marginLeft: '4px' }}>
       <span 
