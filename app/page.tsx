@@ -952,8 +952,8 @@ const RetirementCalculator = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.keys(formalTestResults).map(key => {
-                    const test = formalTestResults[key];
+                  {Object.keys(formalTestResults).map((key) => {
+  const test = formalTestResults[key as keyof typeof formalTestResults];
                     return (
                       <tr key={key} className={test.passed ? 'bg-green-50 hover:bg-green-100 cursor-pointer' : 'bg-red-50 hover:bg-red-100 cursor-pointer'} onClick={() => setSelectedFormalTest(key)}>
                         <td className="p-2 font-bold border">{test.name}</td>
