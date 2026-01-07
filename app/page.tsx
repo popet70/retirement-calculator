@@ -147,7 +147,7 @@ const RetirementCalculator = () => {
 
   const splurgeSummary = useMemo(() => {
     if (splurgeAmount === 0) {
-      return { enabled: false, message: "Set splurge amount above $0 to activate" };
+      return { enabled: false, message: "Set splurge amount above $0 to activate", totalSplurge: 0, activePeriod: '', annualImpact: '' };
     }
     
     const totalSplurge = splurgeAmount * splurgeDuration;
