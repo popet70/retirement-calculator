@@ -524,6 +524,7 @@ const RetirementCalculator = () => {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   };
+}
 
   return (
     <div className="max-w-6xl mx-auto p-6 bg-gray-50">
