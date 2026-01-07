@@ -422,7 +422,7 @@ const RetirementCalculator = () => {
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
-    return simulationResults.map(r => ({
+    return simulationResults.map((r: any) => ({
       year: r.year, 
       age: r.age,
       'Total Balance': toDisplayValue(r.totalBalance, r.year),
