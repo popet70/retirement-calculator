@@ -748,7 +748,7 @@ const RetirementCalculator = () => {
     </div>
   </div>
           
-         {showOneOffExpenses && (
+    {showOneOffExpenses && (
   <>
     <div className="space-y-4">
       {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
@@ -812,6 +812,24 @@ const RetirementCalculator = () => {
         );
       })}
     </div>
+
+    <button 
+      onClick={addOneOffExpense}
+      className="mt-4 w-full px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+    >
+      Add Expense
+    </button>
+  </>
+)}
+
+          <div className="bg-blue-50 p-3 rounded mt-4">
+            <div className="text-sm font-semibold mb-1">Summary</div>
+            <div className="text-xs">
+              Total one-off expenses: {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}
+              {oneOffExpenses.length > 0 && ` across ${oneOffExpenses.length} items`}
+            </div>
+          </div>
+        </div>
 
     <button 
       onClick={addOneOffExpense}
