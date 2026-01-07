@@ -128,7 +128,7 @@ const RetirementCalculator = () => {
     incomeTaperRate: 0.50
   };
 
-  const formatCurrency = (value) => {
+  const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value);
   };
 
