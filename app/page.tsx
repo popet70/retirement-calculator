@@ -224,8 +224,11 @@ const RetirementCalculator = () => {
           guardrailStatus = 'increase';
           currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
         } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
-          guardrailStatus = 'decrease';
-          currentSpendingBase = currentSpendingBase * (1 - guardrailAdjustment / 100);
+            guardrailStatus = 'decrease';
+            const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
+            // Floor: never reduce spending below pension income (indexed for inflation)
+            const indexedPensionFloor = pensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
+            currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
         }
       }
       
