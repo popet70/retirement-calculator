@@ -979,7 +979,7 @@ const RetirementCalculator = () => {
             </div>
             <p className="text-sm text-gray-600 mb-4">{(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).desc}</p>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData.map(r => ({
+              <LineChart data={(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData.map((r: any) => ({
                 year: r.year,
                 age: r.age,
                 balance: toDisplayValue(r.totalBalance, r.year),
