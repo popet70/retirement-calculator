@@ -411,7 +411,7 @@ const RetirementCalculator = () => {
     
     let returns;
     if (useHistoricalData) {
-      returns = historicalReturns[historicalPeriod];
+      returns = historicalReturns[historicalPeriod as keyof typeof historicalReturns];
     } else {
       returns = Array(35).fill(selectedScenario);
     }
