@@ -374,7 +374,7 @@ const RetirementCalculator = () => {
       return lastYear ? lastYear.totalBalance : 0;
     }).sort((a, b) => a - b);
 
-    const getPercentile = (arr, p) => {
+    const getPercentile = (arr: number[], p: number) => {
       const index = Math.floor(arr.length * p / 100);
       return arr[index] || 0;
     };
