@@ -451,7 +451,7 @@ const RetirementCalculator = () => {
     csv += 'Guardrail Status,Current Spending Base\n';
 
     // Calculate detailed breakdown for each year
-    simulationResults.forEach((r, index) => {
+    simulationResults.forEach((r: any, index: number) => {
       const calendarYear = 2030 + r.year - 1;
       
       // Get previous year balances (or initial for year 1)
