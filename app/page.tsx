@@ -878,7 +878,7 @@ const RetirementCalculator = () => {
               <div className="grid grid-cols-2 gap-2">
                 {Object.keys(historicalReturns).map(period => (
                   <button key={period} onClick={() => setHistoricalPeriod(period)} className={'px-3 py-2 rounded text-sm ' + (historicalPeriod === period ? 'bg-orange-600 text-white' : 'bg-gray-200')}>
-                    {historicalLabels[period]}
+                    {historicalLabels[period as keyof typeof historicalLabels]}
                   </button>
                 ))}
               </div>
