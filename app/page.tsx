@@ -35,7 +35,7 @@ const RetirementCalculator = () => {
   const [lowerGuardrail, setLowerGuardrail] = useState(15);
   const [guardrailAdjustment, setGuardrailAdjustment] = useState(10);
   const [showNominalDollars, setShowNominalDollars] = useState(false);
-  const [inflationRate] = useState(2.5);
+  const [inflationRate, setInflationRate] = useState(2.5);
   const [useHistoricalData, setUseHistoricalData] = useState(false);
   const [useMonteCarlo, setUseMonteCarlo] = useState(false);
   const [useFormalTest, setUseFormalTest] = useState(false);
@@ -43,9 +43,9 @@ const RetirementCalculator = () => {
   const [monteCarloRuns, setMonteCarloRuns] = useState(1000);
   const [expectedReturn, setExpectedReturn] = useState(7);
   const [returnVolatility, setReturnVolatility] = useState(18);
-  const [monteCarloResults, setMonteCarloResults] = useState<any>(null);
+  const [monteCarloResults, setMonteCarloResults] = useState(null);
   const [formalTestResults, setFormalTestResults] = useState(null);
-  const [selectedFormalTest, setSelectedFormalTest] = useState<string | null>(null);
+  const [selectedFormalTest, setSelectedFormalTest] = useState(null);
   const [splurgeAmount, setSplurgeAmount] = useState(0);
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
@@ -65,7 +65,6 @@ const RetirementCalculator = () => {
     { description: 'Significant Accessibility Modifications', age: 82, amount: 30000 },
     { description: 'In-home Care Setup', age: 84, amount: 15000 }
   ]);
-  const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
 
   const historicalReturns = {
     gfc2008: [-37,26,15,2,16,32,14,1,12,22,-4,29,19,31,-18,27,16,21,12,26,18,22,15,28,8,18,12,20,15,18,17,16,18,17,18],
@@ -98,9 +97,9 @@ const RetirementCalculator = () => {
   };
 
   const runFormalTests = () => {
-    const results: any = {};
-    Object.keys(formalTests).forEach((key: string) => {
-      const test = formalTests[key as keyof typeof formalTests];
+    const results = {};
+    Object.keys(formalTests).forEach(key => {
+      const test = formalTests[key];
       const simResult = runSimulation(test.returns, test.cpi, test.health, test.years);
       const targetYears = test.years;
       const passed = simResult && simResult.length >= targetYears && simResult[simResult.length - 1].totalBalance > 0;
@@ -129,14 +128,14 @@ const RetirementCalculator = () => {
     incomeTaperRate: 0.50
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value) => {
     return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value);
   };
 
   // Convert value for display
   // Simulation stores values in NOMINAL dollars (inflation-adjusted forward from 2030)
   // year is years from retirement (1-35), where year 1 = age 60 in 2030
-  const toDisplayValue = (value: number, year = 1) => {
+  const toDisplayValue = (value, year = 1) => {
     if (showNominalDollars) {
       // Show nominal - simulation values are already nominal
       return value;
@@ -148,7 +147,7 @@ const RetirementCalculator = () => {
 
   const splurgeSummary = useMemo(() => {
     if (splurgeAmount === 0) {
-      return { enabled: false, message: "Set splurge amount above $0 to activate", totalSplurge: 0, activePeriod: '', annualImpact: '' };
+      return { enabled: false, message: "Set splurge amount above $0 to activate" };
     }
     
     const totalSplurge = splurgeAmount * splurgeDuration;
@@ -165,7 +164,7 @@ const RetirementCalculator = () => {
     };
   }, [splurgeAmount, splurgeStartAge, splurgeDuration, baseSpending]);
 
-  const getSpendingMultiplier = (year: number) => {
+  const getSpendingMultiplier = (year) => {
     if (spendingPattern === 'cpi') {
       return 1.0;
     } else {
@@ -183,7 +182,7 @@ const RetirementCalculator = () => {
     }
   };
 
-  const getMinimumDrawdown = (age: number, balance: number) => {
+  const getMinimumDrawdown = (age, balance) => {
     if (balance <= 0) return 0;
     let rate;
     if (age < 65) rate = 0.04;
@@ -196,7 +195,7 @@ const RetirementCalculator = () => {
     return balance * rate;
   };
 
-  const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
+  const runSimulation = (returnSequence, cpiRate, healthShock, maxYears) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
     let cashAccount = 0;
@@ -216,23 +215,18 @@ const RetirementCalculator = () => {
       
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-        // Compare withdrawal rates in REAL terms (both in 2030 dollars)
-        const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
-        const currentWithdrawalRate = currentSpendingBase / realPortfolio;
+        const currentWithdrawalRate = currentSpendingBase / currentPortfolio;
         const safeWithdrawalRate = initialWithdrawalRate;
         const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
-  
-  if (withdrawalRateRatio <= 100 - upperGuardrail) {
-    guardrailStatus = 'increase';
-    currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
-  } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
-    guardrailStatus = 'decrease';
-    const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
-    const spendingMultiplier = getSpendingMultiplier(year);
-    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
-    currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
-  }
-}
+        
+        if (withdrawalRateRatio <= 100 - upperGuardrail) {
+          guardrailStatus = 'increase';
+          currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
+        } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
+          guardrailStatus = 'decrease';
+          currentSpendingBase = currentSpendingBase * (1 - guardrailAdjustment / 100);
+        }
+      }
       
       const spendingMultiplier = getSpendingMultiplier(year);
       const inflationAdjustedSpending = currentSpendingBase * Math.pow(1 + cpiRate / 100, year - 1);
@@ -380,7 +374,7 @@ const RetirementCalculator = () => {
       return lastYear ? lastYear.totalBalance : 0;
     }).sort((a, b) => a - b);
 
-    const getPercentile = (arr: number[], p: number) => {
+    const getPercentile = (arr, p) => {
       const index = Math.floor(arr.length * p / 100);
       return arr[index] || 0;
     };
@@ -417,7 +411,7 @@ const RetirementCalculator = () => {
     
     let returns;
     if (useHistoricalData) {
-      returns = historicalReturns[historicalPeriod as keyof typeof historicalReturns];
+      returns = historicalReturns[historicalPeriod];
     } else {
       returns = Array(35).fill(selectedScenario);
     }
@@ -428,7 +422,7 @@ const RetirementCalculator = () => {
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
-    return simulationResults.map((r: any) => ({
+    return simulationResults.map(r => ({
       year: r.year, 
       age: r.age,
       'Total Balance': toDisplayValue(r.totalBalance, r.year),
@@ -457,7 +451,7 @@ const RetirementCalculator = () => {
     csv += 'Guardrail Status,Current Spending Base\n';
 
     // Calculate detailed breakdown for each year
-    simulationResults.forEach((r: any, index: number) => {
+    simulationResults.forEach((r, index) => {
       const calendarYear = 2030 + r.year - 1;
       
       // Get previous year balances (or initial for year 1)
@@ -593,6 +587,21 @@ const RetirementCalculator = () => {
             <div>
               <label className="block text-sm font-medium mb-1">Base Annual Spending</label>
               <input type="number" value={baseSpending} onChange={(e) => setBaseSpending(Number(e.target.value))} className="w-full p-2 border rounded" step="5000" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                CPI / Inflation Rate (% per year)
+                <InfoTooltip text="Annual inflation rate used for projections. Affects spending growth, pension indexation, and real returns. Australian long-term average is 2.5%." />
+              </label>
+              <input 
+                type="number" 
+                value={inflationRate} 
+                onChange={(e) => setInflationRate(Number(e.target.value))} 
+                className="w-full p-2 border rounded" 
+                step="0.1"
+                min="0"
+                max="10"
+              />
             </div>
           </div>
           
@@ -735,98 +744,99 @@ const RetirementCalculator = () => {
               One-Off Expenses
               <InfoTooltip text="Single large expenses in specific years (e.g., car purchase, home repairs, wedding). Not recurring." />
             </h2>
-            <button 
-             onClick={() => setShowOneOffExpenses(!showOneOffExpenses)}
-             className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-            >
-             {showOneOffExpenses ? '▼ Hide' : '▶ Show'}
-           </button>
-         </div>
+            {oneOffExpenses.length > 0 && (
+              <button 
+                onClick={() => setOneOffExpenses([])}
+                className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
           
-        {showOneOffExpenses && (
-  <div className="space-y-4">
-    {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
-      const actualIndex = oneOffExpenses.findIndex(e => e === expense);
-      return (
-        <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
-          <div className="flex-1">
-            <input 
-              type="text"
-              placeholder="Description (e.g., New car)"
-              value={expense.description}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].description = e.target.value;
-                setOneOffExpenses(newExpenses);
+          <div className="space-y-4">
+            {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
+              const actualIndex = oneOffExpenses.findIndex(e => e === expense);
+              return (
+                <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
+                  <div className="flex-1">
+                    <input 
+                      type="text"
+                      placeholder="Description (e.g., New car)"
+                      value={expense.description}
+                      onChange={(e) => {
+                        const newExpenses = [...oneOffExpenses];
+                        newExpenses[actualIndex].description = e.target.value;
+                        setOneOffExpenses(newExpenses);
+                      }}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  <div className="w-32">
+                    <label className="text-xs text-gray-600">Age</label>
+                    <input 
+                      type="number"
+                      placeholder="Age"
+                      value={expense.age}
+                      onChange={(e) => {
+                        const newExpenses = [...oneOffExpenses];
+                        newExpenses[actualIndex].age = Number(e.target.value);
+                        setOneOffExpenses(newExpenses);
+                      }}
+                      className="w-full p-2 border rounded"
+                      min="60"
+                      max="100"
+                    />
+                  </div>
+                  <div className="w-40">
+                    <label className="text-xs text-gray-600">Amount</label>
+                    <input 
+                      type="number"
+                      placeholder="Amount"
+                      value={expense.amount}
+                      onChange={(e) => {
+                        const newExpenses = [...oneOffExpenses];
+                        newExpenses[actualIndex].amount = Number(e.target.value);
+                        setOneOffExpenses(newExpenses);
+                      }}
+                      className="w-full p-2 border rounded"
+                      step="1000"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
+                      setOneOffExpenses(newExpenses);
+                    }}
+                    className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              );
+            })}
+            
+            <button 
+              onClick={() => {
+                setOneOffExpenses([...oneOffExpenses, { description: '', age: 65, amount: 50000 }]);
               }}
-              className="w-full p-2 border rounded"
-            />
+              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              + Add One-Off Expense
+            </button>
+            
+            {oneOffExpenses.length > 0 && (
+              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+                <div className="font-semibold text-gray-900 mb-2">Summary</div>
+                <div className="text-sm space-y-1">
+                  <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
+                  <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
+                  <div className="text-xs text-gray-600 mt-2">Expenses shown sorted by age above</div>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="w-32">
-            <label className="text-xs text-gray-600">Age</label>
-            <input 
-              type="number"
-              placeholder="Age"
-              value={expense.age}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].age = Number(e.target.value);
-                setOneOffExpenses(newExpenses);
-              }}
-              className="w-full p-2 border rounded"
-              min="60"
-              max="100"
-            />
-          </div>
-          <div className="w-40">
-            <label className="text-xs text-gray-600">Amount</label>
-            <input 
-              type="number"
-              placeholder="Amount"
-              value={expense.amount}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].amount = Number(e.target.value);
-                setOneOffExpenses(newExpenses);
-              }}
-              className="w-full p-2 border rounded"
-              step="1000"
-            />
-          </div>
-          <button 
-            onClick={() => {
-              const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
-              setOneOffExpenses(newExpenses);
-            }}
-            className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-          >
-            Remove
-          </button>
         </div>
-      );
-    })}
-    
-    <button 
-      onClick={() => {
-        setOneOffExpenses([...oneOffExpenses, { description: '', age: 65, amount: 50000 }]);
-      }}
-      className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      + Add One-Off Expense
-    </button>
-    
-    {oneOffExpenses.length > 0 && (
-      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
-        <div className="font-semibold text-gray-900 mb-2">Summary</div>
-        <div className="text-sm space-y-1">
-          <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
-          <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
-          </div>
-        </div>
-    )}
-    </div>     
-    )}          
-    </div>      
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
@@ -883,7 +893,7 @@ const RetirementCalculator = () => {
               <div className="grid grid-cols-2 gap-2">
                 {Object.keys(historicalReturns).map(period => (
                   <button key={period} onClick={() => setHistoricalPeriod(period)} className={'px-3 py-2 rounded text-sm ' + (historicalPeriod === period ? 'bg-orange-600 text-white' : 'bg-gray-200')}>
-                    {historicalLabels[period as keyof typeof historicalLabels]}
+                    {historicalLabels[period]}
                   </button>
                 ))}
               </div>
@@ -934,15 +944,15 @@ const RetirementCalculator = () => {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="bg-green-50 p-3 rounded">
                 <div className="text-sm">Passed</div>
-                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter((r: any) => r.passed).length}</div>
+                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter(r => r.passed).length}</div>
               </div>
               <div className="bg-red-50 p-3 rounded">
                 <div className="text-sm">Failed</div>
-                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter((r: any) => !r.passed).length}</div>
+                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter(r => !r.passed).length}</div>
               </div>
               <div className="bg-blue-50 p-3 rounded">
                 <div className="text-sm">Success Rate</div>
-                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter((r: any) => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
+                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter(r => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -957,8 +967,8 @@ const RetirementCalculator = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.keys(formalTestResults).map((key) => {
-  const test: any = formalTestResults[key as keyof typeof formalTestResults];
+                  {Object.keys(formalTestResults).map(key => {
+                    const test = formalTestResults[key];
                     return (
                       <tr key={key} className={test.passed ? 'bg-green-50 hover:bg-green-100 cursor-pointer' : 'bg-red-50 hover:bg-red-100 cursor-pointer'} onClick={() => setSelectedFormalTest(key)}>
                         <td className="p-2 font-bold border">{test.name}</td>
@@ -976,15 +986,15 @@ const RetirementCalculator = () => {
           </div>
         )}
 
-        {useFormalTest && selectedFormalTest && formalTestResults && formalTestResults[selectedFormalTest as keyof typeof formalTestResults] && (formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData && (
+        {useFormalTest && selectedFormalTest && formalTestResults && formalTestResults[selectedFormalTest] && formalTestResults[selectedFormalTest].simulationData && (
           <div className="bg-white border p-4 rounded mb-6">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-xl font-bold">Detailed View: {(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).name}</h2>
+              <h2 className="text-xl font-bold">Detailed View: {formalTestResults[selectedFormalTest].name}</h2>
               <button onClick={() => setSelectedFormalTest(null)} className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">{(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).desc}</p>
+            <p className="text-sm text-gray-600 mb-4">{formalTestResults[selectedFormalTest].desc}</p>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData.map((r: any) => ({
+              <LineChart data={formalTestResults[selectedFormalTest].simulationData.map(r => ({
                 year: r.year,
                 age: r.age,
                 balance: toDisplayValue(r.totalBalance, r.year),
@@ -993,8 +1003,8 @@ const RetirementCalculator = () => {
               }))}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
-                <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                <YAxis tickFormatter={(val) => (val/1000).toFixed(0) + 'k'} />
+                <Tooltip formatter={(val) => formatCurrency(val)} />
                 <Legend />
                 <Line type="monotone" dataKey="balance" name="Total Balance" stroke="#2563eb" strokeWidth={2} />
                 <Line type="monotone" dataKey="income" name="Income" stroke="#10b981" strokeWidth={1} />
@@ -1041,8 +1051,8 @@ const RetirementCalculator = () => {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="age" />
-                 <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                 <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                  <YAxis tickFormatter={(val) => (val/1000).toFixed(0) + 'k'} />
+                  <Tooltip formatter={(val) => formatCurrency(val)} />
                   <Legend />
                   <Line type="monotone" dataKey="Total Balance" stroke="#2563eb" strokeWidth={3} />
                   <Line type="monotone" dataKey="Main Super" stroke="#10b981" strokeWidth={2} />
@@ -1058,8 +1068,8 @@ const RetirementCalculator = () => {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="age" />
-                  <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                  <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                  <YAxis tickFormatter={(val) => (val/1000).toFixed(0) + 'k'} />
+                  <Tooltip formatter={(val) => formatCurrency(val)} />
                   <Legend />
                   <Line type="monotone" dataKey="Income" stroke="#10b981" strokeWidth={2} />
                   <Line type="monotone" dataKey="Spending" stroke="#ef4444" strokeWidth={2} />
@@ -1078,5 +1088,3 @@ const RetirementCalculator = () => {
 };
 
 export default RetirementCalculator;
-
-
