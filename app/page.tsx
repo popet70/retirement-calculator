@@ -215,26 +215,24 @@ const RetirementCalculator = () => {
       const startingMainSuper = mainSuper;
       
       if (useGuardrails && year > 1) {
-          const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-         // Use inflation-adjusted spending for withdrawal rate calculation
-        const inflationAdjustedBase = currentSpendingBase * Math.pow(1 + cpiRate / 100, year - 1);
-        const currentWithdrawalRate = inflationAdjustedBase / currentPortfolio;
+        const currentPortfolio = mainSuper + seqBuffer + cashAccount;
+        // Compare withdrawal rates in REAL terms (both in 2030 dollars)
+        const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
+        const currentWithdrawalRate = currentSpendingBase / realPortfolio;
         const safeWithdrawalRate = initialWithdrawalRate;
         const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
-        
-        if (withdrawalRateRatio <= 100 - upperGuardrail) {
-          guardrailStatus = 'increase';
-          currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
-        } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
-          guardrailStatus = 'decrease';
-          const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
-          // Floor: never reduce spending below pension income (indexed for inflation)
-          // Adjust for spending multiplier so that final spending equals pension after multiplier applied
-          const spendingMultiplier = getSpendingMultiplier(year);
-          const indexedPensionFloor = (totalPensionIncome * Math.pow(1 + cpiRate / 100, year - 1)) / spendingMultiplier;
-          currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
-        }
-      }
+  
+  if (withdrawalRateRatio <= 100 - upperGuardrail) {
+    guardrailStatus = 'increase';
+    currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
+  } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
+    guardrailStatus = 'decrease';
+    const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
+    const spendingMultiplier = getSpendingMultiplier(year);
+    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
+    currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
+  }
+}
       
       const spendingMultiplier = getSpendingMultiplier(year);
       const inflationAdjustedSpending = currentSpendingBase * Math.pow(1 + cpiRate / 100, year - 1);
