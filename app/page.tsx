@@ -50,7 +50,6 @@ const RetirementCalculator = () => {
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
   const [oneOffExpenses, setOneOffExpenses] = useState([
-  const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
     { description: 'Major Appliance Replacement', age: 64, amount: 12000 },
     { description: 'Technology Refresh', age: 62, amount: 5000 },
     { description: 'Unexpected Home Repairs', age: 64, amount: 10000 },
@@ -66,6 +65,7 @@ const RetirementCalculator = () => {
     { description: 'Significant Accessibility Modifications', age: 82, amount: 30000 },
     { description: 'In-home Care Setup', age: 84, amount: 15000 }
   ]);
+  const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
 
   const historicalReturns = {
     gfc2008: [-37,26,15,2,16,32,14,1,12,22,-4,29,19,31,-18,27,16,21,12,26,18,22,15,28,8,18,12,20,15,18,17,16,18,17,18],
