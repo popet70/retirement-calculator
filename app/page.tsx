@@ -97,9 +97,9 @@ const RetirementCalculator = () => {
   };
 
   const runFormalTests = () => {
-    const results = {};
+    const results: any = {};
     Object.keys(formalTests).forEach(key => {
-      const test = formalTests[key];
+      const test = formalTests[key as keyof typeof formalTests];
       const simResult = runSimulation(test.returns, test.cpi, test.health, test.years);
       const targetYears = test.years;
       const passed = simResult && simResult.length >= targetYears && simResult[simResult.length - 1].totalBalance > 0;
@@ -411,7 +411,7 @@ const RetirementCalculator = () => {
     
     let returns;
     if (useHistoricalData) {
-      returns = historicalReturns[historicalPeriod];
+      returns = historicalReturns[historicalPeriod as keyof typeof historicalReturns];
     } else {
       returns = Array(35).fill(selectedScenario);
     }
@@ -893,7 +893,7 @@ const RetirementCalculator = () => {
               <div className="grid grid-cols-2 gap-2">
                 {Object.keys(historicalReturns).map(period => (
                   <button key={period} onClick={() => setHistoricalPeriod(period)} className={'px-3 py-2 rounded text-sm ' + (historicalPeriod === period ? 'bg-orange-600 text-white' : 'bg-gray-200')}>
-                    {historicalLabels[period]}
+                    {historicalLabels[period as keyof typeof historicalLabels]}
                   </button>
                 ))}
               </div>
@@ -944,15 +944,15 @@ const RetirementCalculator = () => {
             <div className="grid grid-cols-3 gap-4 mb-4">
               <div className="bg-green-50 p-3 rounded">
                 <div className="text-sm">Passed</div>
-                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter(r => r.passed).length}</div>
+                <div className="text-3xl font-bold text-green-700">{Object.values(formalTestResults).filter((r: any) => r.passed).length}</div>
               </div>
               <div className="bg-red-50 p-3 rounded">
                 <div className="text-sm">Failed</div>
-                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter(r => !r.passed).length}</div>
+                <div className="text-3xl font-bold text-red-700">{Object.values(formalTestResults).filter((r: any) => !r.passed).length}</div>
               </div>
               <div className="bg-blue-50 p-3 rounded">
                 <div className="text-sm">Success Rate</div>
-                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter(r => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
+                <div className="text-3xl font-bold text-blue-700">{((Object.values(formalTestResults).filter((r: any) => r.passed).length / Object.values(formalTestResults).length) * 100).toFixed(0)}%</div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -967,8 +967,8 @@ const RetirementCalculator = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.keys(formalTestResults).map(key => {
-                    const test = formalTestResults[key];
+                  {formalTestResults && Object.keys(formalTestResults).map(key => {
+                    const test = (formalTestResults as any)[key];
                     return (
                       <tr key={key} className={test.passed ? 'bg-green-50 hover:bg-green-100 cursor-pointer' : 'bg-red-50 hover:bg-red-100 cursor-pointer'} onClick={() => setSelectedFormalTest(key)}>
                         <td className="p-2 font-bold border">{test.name}</td>
@@ -986,15 +986,15 @@ const RetirementCalculator = () => {
           </div>
         )}
 
-        {useFormalTest && selectedFormalTest && formalTestResults && formalTestResults[selectedFormalTest] && formalTestResults[selectedFormalTest].simulationData && (
+        {useFormalTest && selectedFormalTest && formalTestResults && (formalTestResults as any)[selectedFormalTest] && (formalTestResults as any)[selectedFormalTest].simulationData && (
           <div className="bg-white border p-4 rounded mb-6">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-xl font-bold">Detailed View: {formalTestResults[selectedFormalTest].name}</h2>
+              <h2 className="text-xl font-bold">Detailed View: {(formalTestResults as any)[selectedFormalTest].name}</h2>
               <button onClick={() => setSelectedFormalTest(null)} className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">Close</button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">{formalTestResults[selectedFormalTest].desc}</p>
+            <p className="text-sm text-gray-600 mb-4">{(formalTestResults as any)[selectedFormalTest].desc}</p>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={formalTestResults[selectedFormalTest].simulationData.map(r => ({
+              <LineChart data={(formalTestResults as any)[selectedFormalTest].simulationData.map((r: any) => ({
                 year: r.year,
                 age: r.age,
                 balance: toDisplayValue(r.totalBalance, r.year),
