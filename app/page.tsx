@@ -819,6 +819,10 @@ const RetirementCalculator = () => {
         <div className="text-sm space-y-1">
           <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
           <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
+          </div>
+        </div>
+    )}
+    </div>
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
