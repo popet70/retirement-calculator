@@ -215,8 +215,10 @@ const RetirementCalculator = () => {
       const startingMainSuper = mainSuper;
       
       if (useGuardrails && year > 1) {
-        const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-        const currentWithdrawalRate = currentSpendingBase / currentPortfolio;
+          const currentPortfolio = mainSuper + seqBuffer + cashAccount;
+         // Use inflation-adjusted spending for withdrawal rate calculation
+        const inflationAdjustedBase = currentSpendingBase * Math.pow(1 + cpiRate / 100, year - 1);
+        const currentWithdrawalRate = inflationAdjustedBase / currentPortfolio;
         const safeWithdrawalRate = initialWithdrawalRate;
         const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
         
