@@ -218,7 +218,17 @@ const RetirementCalculator = () => {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
         // Compare withdrawal rates in REAL terms (both in 2030 dollars)
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
-        const currentWithdrawalRate = currentSpendingBase / realPortfolio;
+        
+        // Calculate total planned spending for this year (base + splurge if applicable)
+        let totalPlannedSpending = currentSpendingBase;
+        if (splurgeAmount > 0) {
+          const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+          if (age >= splurgeStartAge && age <= splurgeEndAge) {
+            totalPlannedSpending += splurgeAmount;
+          }
+        }
+        
+        const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
         const safeWithdrawalRate = initialWithdrawalRate;
         const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
   
@@ -235,22 +245,28 @@ const RetirementCalculator = () => {
 }
       
       const spendingMultiplier = getSpendingMultiplier(year);
-      const inflationAdjustedSpending = currentSpendingBase * Math.pow(1 + cpiRate / 100, year - 1);
+      
+      // Calculate base spending in real (2030) terms including splurge
+      let realBaseSpending = currentSpendingBase;
+      
+      // Add splurge to base if within the splurge period (in real terms)
+      if (splurgeAmount > 0) {
+        const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+        if (age >= splurgeStartAge && age <= splurgeEndAge) {
+          realBaseSpending += splurgeAmount;
+        }
+      }
+      
+      // Now inflate this combined base to nominal terms
+      const inflationAdjustedSpending = realBaseSpending * Math.pow(1 + cpiRate / 100, year - 1);
+      
+      // Additional costs not subject to guardrails
       let additionalCosts = 0;
       if (healthShock && year >= 15) {
         additionalCosts = 30000;
       }
       
-      // Add splurge if within the splurge period
-      let splurgeAddition = 0;
-      if (splurgeAmount > 0) {
-        const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-        if (age >= splurgeStartAge && age <= splurgeEndAge) {
-          splurgeAddition = splurgeAmount * Math.pow(1 + cpiRate / 100, year - 1);
-        }
-      }
-      
-      // Add one-off expenses for this age
+      // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
       oneOffExpenses.forEach(expense => {
         if (expense.age === age) {
@@ -258,7 +274,7 @@ const RetirementCalculator = () => {
         }
       });
       
-      const totalSpending = inflationAdjustedSpending * spendingMultiplier + additionalCosts + splurgeAddition + oneOffAddition;
+      const totalSpending = inflationAdjustedSpending * spendingMultiplier + additionalCosts + oneOffAddition;
 
       const totalAssets = mainSuper + seqBuffer;
       const indexedMaxPension = agePensionParams.maxPensionPerYear * Math.pow(1 + cpiRate / 100, year - 1);
