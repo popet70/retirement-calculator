@@ -227,7 +227,7 @@ const RetirementCalculator = () => {
             guardrailStatus = 'decrease';
             const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
             // Floor: never reduce spending below pension income (indexed for inflation)
-            const indexedPensionFloor = pensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
+            const indexedPensionFloor = totalPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
             currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
         }
       }
