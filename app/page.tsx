@@ -822,7 +822,9 @@ const RetirementCalculator = () => {
           </div>
         </div>
     )}
-    </div>
+    </div>     
+    )}          
+    </div>      
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
