@@ -647,6 +647,14 @@ const RetirementCalculator = () => {
                 </span>
               </label>
             </div>
+            {includeAgePension && (
+             <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+               <div className="text-xs text-gray-700">
+                <span className="font-semibold">ℹ️ Note:</span> Age Pension calculations use <strong>couple rates</strong> 
+               (max ~$44,855/year combined). Single person rates (~$29,754/year max) and thresholds differ.
+             </div>
+           </div>
+           )}
           </div>
           
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded">
