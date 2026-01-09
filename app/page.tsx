@@ -717,12 +717,13 @@ const RetirementCalculator = () => {
                   <div className="text-sm text-gray-600 mb-1">Age Pension Eligibility</div>
                   <div className="text-2xl font-bold text-blue-700">
                     Age {agePensionParams.eligibilityAge}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-2">
-                    Calendar year: {2030 + (agePensionParams.eligibilityAge - 60)}<br/>
-                    Asset & income tested
-                  </div>
-                </div>
+                 </div>
+                <div className="text-xs text-gray-600 mt-2">
+                  Calendar year: {2030 + (agePensionParams.eligibilityAge - 60)}<br/>
+                  Asset & income tested<br/>
+                 <span className="text-blue-700 font-semibold">⚠️ Using couple rates</span>
+               </div>
+             </div>
                 
                 <div className="p-4 bg-purple-50 rounded border border-purple-200">
                   <div className="text-sm text-gray-600 mb-1">Income Coverage</div>
