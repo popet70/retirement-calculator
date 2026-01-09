@@ -66,6 +66,7 @@ const RetirementCalculator = () => {
     { description: 'In-home Care Setup', age: 84, amount: 15000 }
   ]);
   const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
+  const [showPensionSummary, setShowPensionSummary] = useState(true);  // Show by default
 
   const historicalReturns = {
     gfc2008: [-37,26,15,2,16,32,14,1,12,22,-4,29,19,31,-18,27,16,21,12,26,18,22,15,28,8,18,12,20,15,18,17,16,18,17,18],
@@ -675,6 +676,106 @@ const RetirementCalculator = () => {
           </div>
         </div>
 
+        <div className="bg-white border p-4 rounded mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">
+              Pension Summary
+              <InfoTooltip text="Your guaranteed lifetime income from PSS/CSS pension and Age Pension eligibility" />
+            </h2>
+            <button 
+              onClick={() => setShowPensionSummary(!showPensionSummary)}
+              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              {showPensionSummary ? '▼ Hide' : '▶ Show'}
+            </button>
+          </div>
+          
+          {showPensionSummary && (
+            <div className="space-y-4">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-4 bg-green-50 rounded border border-green-200">
+                  <div className="text-sm text-gray-600 mb-1">PSS/CSS Pension (2030)</div>
+                  <div className="text-2xl font-bold text-green-700">
+                    {formatCurrency(totalPensionIncome)}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    ✓ Indexed to CPI ({inflationRate}%)<br/>
+                    ✓ Tax-free in retirement
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-blue-50 rounded border border-blue-200">
+                  <div className="text-sm text-gray-600 mb-1">Age Pension Eligibility</div>
+                  <div className="text-2xl font-bold text-blue-700">
+                    Age {agePensionParams.eligibilityAge}
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    Calendar year: {2030 + (agePensionParams.eligibilityAge - 60)}<br/>
+                    Asset & income tested
+                  </div>
+                </div>
+                
+                <div className="p-4 bg-purple-50 rounded border border-purple-200">
+                  <div className="text-sm text-gray-600 mb-1">Income Coverage</div>
+                  <div className="text-2xl font-bold text-purple-700">
+                    {((totalPensionIncome / baseSpending) * 100).toFixed(0)}%
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    of base spending<br/>
+                    covered by PSS/CSS pension
+                  </div>
+                </div>
+              </div>
+
+              {/* Age Pension Over Time Chart */}
+              {simulationResults && simulationResults.length > 0 && (
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold mb-3">Age Pension Over Time</h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <AreaChart data={simulationResults.map((r: any) => ({
+                      age: r.age,
+                      'Age Pension': toDisplayValue(r.agePension, r.year),
+                      'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
+                      'Total Income': toDisplayValue(r.income, r.year)
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
+                      <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
+                      <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                      <Legend />
+                      <Area type="monotone" dataKey="PSS/CSS Pension" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
+                      <Area type="monotone" dataKey="Age Pension" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+                      <Line type="monotone" dataKey="Total Income" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <div className="mt-2 text-xs text-gray-600">
+                    💡 Stacked areas show PSS/CSS pension (green) + Age Pension (blue). Purple line shows total income.
+                    Age Pension reduces as assets grow due to asset test.
+                  </div>
+                </div>
+              )}
+
+              {/* Guardrail Protection Note */}
+              {useGuardrails && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
+                  <div className="flex items-start gap-2">
+                    <span className="text-yellow-600 text-lg">🛡️</span>
+                    <div className="text-sm">
+                      <div className="font-semibold text-gray-900 mb-1">Pension Floor Protection Active</div>
+                      <div className="text-gray-700">
+                        With guardrails enabled, your spending will never fall below your inflation-adjusted 
+                        pension income ({formatCurrency(totalPensionIncome)}), even in severe market downturns. 
+                        This provides a guaranteed baseline standard of living.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
         <div className="bg-white border p-4 rounded mb-6 mt-6">
           <h2 className="text-xl font-bold mb-3">
             Retirement Spending
