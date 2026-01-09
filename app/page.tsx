@@ -458,6 +458,14 @@ const RetirementCalculator = () => {
       return monteCarloResults.medianSimulation;
     }
     
+    // Use selected formal test data when available
+    if (useFormalTest && selectedFormalTest && formalTestResults) {
+      const testResult = formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any;
+      if (testResult && testResult.simulationData) {
+        return testResult.simulationData;
+      }
+    }
+    
     let returns;
     if (useHistoricalData) {
       returns = historicalReturns[historicalPeriod as keyof typeof historicalReturns];
@@ -468,7 +476,7 @@ const RetirementCalculator = () => {
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
-      currentAge, retirementAge, agePensionParams, pensionRecipientType]);
+      currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
