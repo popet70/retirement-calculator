@@ -1262,8 +1262,42 @@ const RetirementCalculator = () => {
 
         {chartData.length > 0 && (
           <div>
+            {/* Explanatory Banner for Monte Carlo */}
+            {useMonteCarlo && monteCarloResults && (
+              <div className="bg-green-50 border-l-4 border-green-500 p-3 mb-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-green-800">📊 Monte Carlo View:</span>
+                  <span className="text-gray-700"> Charts below show the median (50th percentile) scenario from {monteCarloRuns.toLocaleString()} simulations. See Monte Carlo Results section above for success rate ({monteCarloResults.successRate.toFixed(1)}%) and percentile analysis.</span>
+                </div>
+              </div>
+            )}
+
+            {/* Explanatory Banner for Formal Tests */}
+            {useFormalTest && formalTestResults && (
+              <div className="bg-purple-50 border-l-4 border-purple-500 p-3 mb-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-purple-800">🧪 Formal Test View:</span>
+                  <span className="text-gray-700"> Charts below show {selectedFormalTest ? (formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).name : 'the base scenario'}. Click different tests in the table above to compare scenarios.</span>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white border rounded p-4 mb-6">
-              <h2 className="text-xl font-bold mb-3">Portfolio Balance</h2>
+              <h2 className="text-xl font-bold mb-3">
+                Portfolio Balance
+                {useMonteCarlo && monteCarloResults && (
+                  <span className="text-base font-normal text-gray-600"> - Median Scenario</span>
+                )}
+                {useFormalTest && selectedFormalTest && formalTestResults && (
+                  <span className="text-base font-normal text-gray-600"> - {(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).name}</span>
+                )}
+                {useMonteCarlo && (
+                  <InfoTooltip text="This shows the median (50th percentile) outcome from your Monte Carlo simulation. Half of scenarios performed better, half performed worse." />
+                )}
+                {useFormalTest && (
+                  <InfoTooltip text="This shows the selected formal test scenario. Click different tests in the table above to update this chart." />
+                )}
+              </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -1280,7 +1314,21 @@ const RetirementCalculator = () => {
             </div>
 
             <div className="bg-white border rounded p-4 mb-6">
-              <h2 className="text-xl font-bold mb-3">Income vs Spending</h2>
+              <h2 className="text-xl font-bold mb-3">
+                Income vs Spending
+                {useMonteCarlo && monteCarloResults && (
+                  <span className="text-base font-normal text-gray-600"> - Median Scenario</span>
+                )}
+                {useFormalTest && selectedFormalTest && formalTestResults && (
+                  <span className="text-base font-normal text-gray-600"> - {(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).name}</span>
+                )}
+                {useMonteCarlo && (
+                  <InfoTooltip text="Median scenario income and spending trajectory. Individual simulations may vary significantly." />
+                )}
+                {useFormalTest && (
+                  <InfoTooltip text="Income and spending for the selected test scenario. Click different tests above to compare." />
+                )}
+              </h2>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
