@@ -1229,9 +1229,9 @@ const RetirementCalculator = () => {
               <LineChart data={(formalTestResults[selectedFormalTest as keyof typeof formalTestResults] as any).simulationData.map((r: any) => ({
                 year: r.year,
                 age: r.age,
-                balance: toDisplayValue(r.totalBalance, r.year),
-                spending: toDisplayValue(r.spending, r.year),
-                income: toDisplayValue(r.income, r.year)
+                balance: toDisplayValue(r.totalBalance, r.year, r.cpiRate),
+                spending: toDisplayValue(r.spending, r.year, r.cpiRate),
+                income: toDisplayValue(r.income, r.year, r.cpiRate)
               }))}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
