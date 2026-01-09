@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ComposedChart } from 'recharts';
 
 const InfoTooltip = ({ text }: { text: string }) => {
   return (
@@ -733,22 +733,22 @@ const RetirementCalculator = () => {
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Age Pension Over Time</h3>
                   <ResponsiveContainer width="100%" height={250}>
-                    <AreaChart data={simulationResults.map((r: any) => ({
+                    <ComposedChart data={simulationResults.map((r: any) => ({
                       age: r.age,
-                      'Age Pension': toDisplayValue(r.agePension, r.year),
-                      'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
-                      'Total Income': toDisplayValue(r.income, r.year)
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
-                      <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                      <Tooltip formatter={(val) => formatCurrency(val as number)} />
-                      <Legend />
-                      <Area type="monotone" dataKey="PSS/CSS Pension" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
-                      <Area type="monotone" dataKey="Age Pension" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
-                      <Line type="monotone" dataKey="Total Income" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                     'Age Pension': toDisplayValue(r.agePension, r.year),
+                     'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
+                     'Total Income': toDisplayValue(r.income, r.year)
+                   }))}>
+                     <CartesianGrid strokeDasharray="3 3" />
+                     <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
+                     <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
+                     <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                     <Legend />
+                    <Area type="monotone" dataKey="PSS/CSS Pension" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
+                    <Area type="monotone" dataKey="Age Pension" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+                    <Line type="monotone" dataKey="Total Income" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                 </ComposedChart>
+                </ResponsiveContainer>
                   <div className="mt-2 text-xs text-gray-600">
                     💡 Stacked areas show PSS/CSS pension (green) + Age Pension (blue). Purple line shows total income.
                     Age Pension reduces as assets grow due to asset test.
