@@ -163,13 +163,15 @@ const RetirementCalculator = () => {
   // Convert value for display
   // Simulation stores values in NOMINAL dollars (inflation-adjusted forward from retirement year)
   // year is years from retirement (1-35)
-  const toDisplayValue = (value: number, year = 1) => {
+  const toDisplayValue = (value: number, year = 1, cpi?: number) => {
     if (showNominalDollars) {
       // Show nominal - simulation values are already nominal
       return value;
     } else {
       // Convert from nominal to real retirement year dollars by deflating
-      return value / Math.pow(1 + inflationRate / 100, year - 1);
+      // Use provided CPI rate if available (for formal tests with different CPI), otherwise use global inflationRate
+      const cpiToUse = cpi !== undefined ? cpi : inflationRate;
+      return value / Math.pow(1 + cpiToUse / 100, year - 1);
     }
   };
 
@@ -483,12 +485,12 @@ const RetirementCalculator = () => {
     return simulationResults.map((r: any) => ({
       year: r.year, 
       age: r.age,
-      'Total Balance': toDisplayValue(r.totalBalance, r.year),
-      'Main Super': toDisplayValue(r.mainSuper, r.year),
-      'Buffer': toDisplayValue(r.seqBuffer, r.year),
-      'Cash': toDisplayValue(r.cashAccount, r.year),
-      'Spending': toDisplayValue(r.spending, r.year),
-      'Income': toDisplayValue(r.income, r.year)
+      'Total Balance': toDisplayValue(r.totalBalance, r.year, r.cpiRate),
+      'Main Super': toDisplayValue(r.mainSuper, r.year, r.cpiRate),
+      'Buffer': toDisplayValue(r.seqBuffer, r.year, r.cpiRate),
+      'Cash': toDisplayValue(r.cashAccount, r.year, r.cpiRate),
+      'Spending': toDisplayValue(r.spending, r.year, r.cpiRate),
+      'Income': toDisplayValue(r.income, r.year, r.cpiRate)
     }));
   }, [simulationResults, showNominalDollars]);
 
@@ -496,9 +498,9 @@ const RetirementCalculator = () => {
     if (!simulationResults) return [];
     return simulationResults.map((r: any) => ({
       age: r.age,
-      'Age Pension': toDisplayValue(r.agePension, r.year),
-      'PSS/CSS Pension': toDisplayValue(r.pensionIncome, r.year),
-      'Total Income': toDisplayValue(r.income, r.year)
+      'Age Pension': toDisplayValue(r.agePension, r.year, r.cpiRate),
+      'PSS/CSS Pension': toDisplayValue(r.pensionIncome, r.year, r.cpiRate),
+      'Total Income': toDisplayValue(r.income, r.year, r.cpiRate)
     }));
   }, [simulationResults, showNominalDollars]);
 
