@@ -66,7 +66,17 @@ const RetirementCalculator = () => {
     { description: 'In-home Care Setup', age: 84, amount: 15000 }
   ]);
   const [showOneOffExpenses, setShowOneOffExpenses] = useState(true);
-  const [showPensionSummary, setShowPensionSummary] = useState(true);  // Show by default
+  const [showPensionSummary, setShowPensionSummary] = useState(true);
+  const [currentAge, setCurrentAge] = useState(55);
+  const [retirementAge, setRetirementAge] = useState(60);
+  const [pensionRecipientType, setPensionRecipientType] = useState<'single' | 'couple'>('couple');
+
+  // Calculate retirement year based on current age
+  const getRetirementYear = (retAge: number) => {
+    const currentYear = 2026;
+    const yearsUntilRetirement = retAge - currentAge;
+    return currentYear + yearsUntilRetirement;
+  };
 
   const historicalReturns = {
     gfc2008: [-37,26,15,2,16,32,14,1,12,22,-4,29,19,31,-18,27,16,21,12,26,18,22,15,28,8,18,12,20,15,18,17,16,18,17,18],
@@ -118,31 +128,47 @@ const RetirementCalculator = () => {
     return results;
   };
 
-  const agePensionParams = {
-    eligibilityAge: 67,
-    maxPensionPerYear: 44855,
-    assetTestThresholdHomeowner: 451500,
-    assetTestCutoffHomeowner: 986500,
-    assetTestThresholdNonHomeowner: 675500,
-    assetTestCutoffNonHomeowner: 1210500,
-    assetTaperPerYear: 78,
-    incomeTestFreeArea: 8736,
-    incomeTaperRate: 0.50
-  };
+  const agePensionParams = useMemo(() => {
+    if (pensionRecipientType === 'single') {
+      return {
+        eligibilityAge: 67,
+        maxPensionPerYear: 29754,  // Single rate
+        assetTestThresholdHomeowner: 314000,
+        assetTestCutoffHomeowner: 695500,
+        assetTestThresholdNonHomeowner: 566000,
+        assetTestCutoffNonHomeowner: 947500,
+        assetTaperPerYear: 78,
+        incomeTestFreeArea: 5512,  // Single rate
+        incomeTaperRate: 0.50
+      };
+    } else {
+      return {
+        eligibilityAge: 67,
+        maxPensionPerYear: 44855,  // Couple rate (combined)
+        assetTestThresholdHomeowner: 451500,
+        assetTestCutoffHomeowner: 986500,
+        assetTestThresholdNonHomeowner: 675500,
+        assetTestCutoffNonHomeowner: 1210500,
+        assetTaperPerYear: 78,
+        incomeTestFreeArea: 8736,  // Couple rate
+        incomeTaperRate: 0.50
+      };
+    }
+  }, [pensionRecipientType]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(value);
   };
 
   // Convert value for display
-  // Simulation stores values in NOMINAL dollars (inflation-adjusted forward from 2030)
-  // year is years from retirement (1-35), where year 1 = age 60 in 2030
+  // Simulation stores values in NOMINAL dollars (inflation-adjusted forward from retirement year)
+  // year is years from retirement (1-35)
   const toDisplayValue = (value: number, year = 1) => {
     if (showNominalDollars) {
       // Show nominal - simulation values are already nominal
       return value;
     } else {
-      // Convert from nominal to real 2030 dollars by deflating
+      // Convert from nominal to real retirement year dollars by deflating
       return value / Math.pow(1 + inflationRate / 100, year - 1);
     }
   };
@@ -154,7 +180,7 @@ const RetirementCalculator = () => {
     
     const totalSplurge = splurgeAmount * splurgeDuration;
     const endAge = splurgeStartAge + splurgeDuration - 1;
-    const startYear = 2025 + (splurgeStartAge - 60);
+    const startYear = getRetirementYear(retirementAge) + (splurgeStartAge - retirementAge);
     const endYear = startYear + splurgeDuration - 1;
     const combinedSpending = baseSpending + splurgeAmount;
     
@@ -164,7 +190,7 @@ const RetirementCalculator = () => {
       activePeriod: `Age ${splurgeStartAge} to ${endAge} (${startYear}-${endYear})`,
       annualImpact: `Combined spending ${formatCurrency(combinedSpending)}/year`
     };
-  }, [splurgeAmount, splurgeStartAge, splurgeDuration, baseSpending]);
+  }, [splurgeAmount, splurgeStartAge, splurgeDuration, baseSpending, retirementAge, currentAge]);
 
   const getSpendingMultiplier = (year: number) => {
     if (spendingPattern === 'cpi') {
@@ -202,7 +228,7 @@ const RetirementCalculator = () => {
     let seqBuffer = sequencingBuffer;
     let cashAccount = 0;
     const results = [];
-    const startAge = 60;
+    const startAge = retirementAge;
     const initialPortfolio = mainSuperBalance + sequencingBuffer;
     let currentSpendingBase = baseSpending;
     const initialWithdrawalRate = baseSpending / initialPortfolio;
@@ -217,7 +243,7 @@ const RetirementCalculator = () => {
       
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-        // Compare withdrawal rates in REAL terms (both in 2030 dollars)
+        // Compare withdrawal rates in REAL terms
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
         
         // Calculate total planned spending for this year (base + splurge if applicable)
@@ -247,7 +273,7 @@ const RetirementCalculator = () => {
       
       const spendingMultiplier = getSpendingMultiplier(year);
       
-      // Calculate base spending in real (2030) terms including splurge
+      // Calculate base spending in real terms including splurge
       let realBaseSpending = currentSpendingBase;
       
       // Add splurge to base if within the splurge period (in real terms)
@@ -441,7 +467,8 @@ const RetirementCalculator = () => {
     return runSimulation(returns, inflationRate, false, 35);
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
-      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses]);
+      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
+      currentAge, retirementAge, agePensionParams, pensionRecipientType]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -475,7 +502,7 @@ const RetirementCalculator = () => {
 
     // Calculate detailed breakdown for each year
     simulationResults.forEach((r: any, index: number) => {
-      const calendarYear = 2030 + r.year - 1;
+      const calendarYear = getRetirementYear(retirementAge) + r.year - 1;
       
       // Get previous year balances (or initial for year 1)
       const prevMainSuper = index === 0 ? mainSuperBalance : simulationResults[index - 1].mainSuper;
@@ -553,7 +580,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 10.0 - Complete Retirement Modeling</p>
+            <p className="text-gray-600">Version 10.1 - Complete Retirement Modeling</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -562,7 +589,7 @@ const RetirementCalculator = () => {
                 onClick={() => setShowNominalDollars(false)} 
                 className={'px-4 py-2 rounded text-sm font-medium ' + (!showNominalDollars ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700')}
               >
-                Real 2030 $
+                Real {getRetirementYear(retirementAge)} $
               </button>
               <button 
                 onClick={() => setShowNominalDollars(true)} 
@@ -630,7 +657,60 @@ const RetirementCalculator = () => {
           
           <div className="grid grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="flex items-center">
+              <label className="block text-sm font-medium mb-1">
+                Current Age
+                <InfoTooltip text="Your age today. Used to calculate when you'll reach retirement age." />
+              </label>
+              <select 
+                value={currentAge} 
+                onChange={(e) => setCurrentAge(Number(e.target.value))} 
+                className="w-full p-2 border rounded"
+              >
+                {[50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65].map(age => (
+                  <option key={age} value={age}>
+                    Age {age}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Retirement Age
+                <InfoTooltip text="The age at which you plan to retire and start drawing from your super." />
+              </label>
+              <select 
+                value={retirementAge} 
+                onChange={(e) => setRetirementAge(Number(e.target.value))} 
+                className="w-full p-2 border rounded"
+              >
+                {[55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70]
+                  .filter(age => age >= currentAge)
+                  .map(age => (
+                    <option key={age} value={age}>
+                      Age {age} (Year: {getRetirementYear(age)})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Age Pension Recipient Type
+                <InfoTooltip text="Single or couple rates affect maximum payment and asset test thresholds." />
+              </label>
+              <select 
+                value={pensionRecipientType} 
+                onChange={(e) => setPensionRecipientType(e.target.value as 'single' | 'couple')} 
+                className="w-full p-2 border rounded"
+              >
+                <option value="couple">Couple (combined rates)</option>
+                <option value="single">Single person</option>
+              </select>
+            </div>
+            <div>
+              <label className="flex items-center pt-7">
                 <input type="checkbox" checked={isHomeowner} onChange={(e) => setIsHomeowner(e.target.checked)} className="mr-2" />
                 <span className="text-sm font-medium">
                   Own Home (affects Age Pension asset test)
@@ -638,6 +718,9 @@ const RetirementCalculator = () => {
                 </span>
               </label>
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-4">
             <div>
               <label className="flex items-center">
                 <input type="checkbox" checked={includeAgePension} onChange={(e) => setIncludeAgePension(e.target.checked)} className="mr-2" />
@@ -647,15 +730,16 @@ const RetirementCalculator = () => {
                 </span>
               </label>
             </div>
-            {includeAgePension && (
-             <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
-               <div className="text-xs text-gray-700">
-                <span className="font-semibold">ℹ️ Note:</span> Age Pension calculations use <strong>couple rates</strong> 
-               (max ~$44,855/year combined). Single person rates (~$29,754/year max) and thresholds differ.
-             </div>
-           </div>
-           )}
           </div>
+          
+          {includeAgePension && (
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+              <div className="text-xs text-gray-700">
+                <span className="font-semibold">ℹ️ Age Pension:</span> Using <strong>{pensionRecipientType}</strong> rates 
+                (max ~{formatCurrency(agePensionParams.maxPensionPerYear)}/year{pensionRecipientType === 'couple' ? ' combined' : ''}).
+              </div>
+            </div>
+          )}
           
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded">
             <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>
@@ -703,7 +787,7 @@ const RetirementCalculator = () => {
               {/* Summary Cards */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="p-4 bg-green-50 rounded border border-green-200">
-                  <div className="text-sm text-gray-600 mb-1">PSS/CSS Pension (2030)</div>
+                  <div className="text-sm text-gray-600 mb-1">PSS/CSS Pension ({getRetirementYear(retirementAge)})</div>
                   <div className="text-2xl font-bold text-green-700">
                     {formatCurrency(totalPensionIncome)}
                   </div>
@@ -717,13 +801,15 @@ const RetirementCalculator = () => {
                   <div className="text-sm text-gray-600 mb-1">Age Pension Eligibility</div>
                   <div className="text-2xl font-bold text-blue-700">
                     Age {agePensionParams.eligibilityAge}
-                 </div>
-                <div className="text-xs text-gray-600 mt-2">
-                  Calendar year: {2030 + (agePensionParams.eligibilityAge - 60)}<br/>
-                  Asset & income tested<br/>
-                 <span className="text-blue-700 font-semibold">⚠️ Using couple rates</span>
-               </div>
-             </div>
+                  </div>
+                  <div className="text-xs text-gray-600 mt-2">
+                    Calendar year: {getRetirementYear(retirementAge) + (agePensionParams.eligibilityAge - retirementAge)}<br/>
+                    Asset & income tested<br/>
+                    <span className="text-blue-700 font-semibold">
+                      {pensionRecipientType === 'couple' ? '👥 Couple rates' : '👤 Single rates'}
+                    </span>
+                  </div>
+                </div>
                 
                 <div className="p-4 bg-purple-50 rounded border border-purple-200">
                   <div className="text-sm text-gray-600 mb-1">Income Coverage</div>
@@ -744,20 +830,20 @@ const RetirementCalculator = () => {
                   <ResponsiveContainer width="100%" height={250}>
                     <ComposedChart data={simulationResults.map((r: any) => ({
                       age: r.age,
-                     'Age Pension': toDisplayValue(r.agePension, r.year),
-                     'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
-                     'Total Income': toDisplayValue(r.income, r.year)
-                   }))}>
-                     <CartesianGrid strokeDasharray="3 3" />
-                     <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
-                     <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                     <Tooltip formatter={(val) => formatCurrency(val as number)} />
-                     <Legend />
-                    <Area type="monotone" dataKey="PSS/CSS Pension" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
-                    <Area type="monotone" dataKey="Age Pension" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
-                    <Line type="monotone" dataKey="Total Income" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                 </ComposedChart>
-                </ResponsiveContainer>
+                      'Age Pension': toDisplayValue(r.agePension, r.year),
+                      'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
+                      'Total Income': toDisplayValue(r.income, r.year)
+                    }))}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
+                      <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
+                      <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                      <Legend />
+                      <Area type="monotone" dataKey="PSS/CSS Pension" stackId="1" stroke="#10b981" fill="#10b981" fillOpacity={0.6} />
+                      <Area type="monotone" dataKey="Age Pension" stackId="1" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.6} />
+                      <Line type="monotone" dataKey="Total Income" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
                   <div className="mt-2 text-xs text-gray-600">
                     💡 Stacked areas show PSS/CSS pension (green) + Age Pension (blue). Purple line shows total income.
                     Age Pension reduces as assets grow due to asset test.
@@ -830,7 +916,7 @@ const RetirementCalculator = () => {
                 </label>
                 <input 
                   type="range" 
-                  min="60" 
+                  min={retirementAge} 
                   max="90" 
                   step="1"
                   value={splurgeStartAge} 
@@ -877,97 +963,97 @@ const RetirementCalculator = () => {
               <InfoTooltip text="Single large expenses in specific years (e.g., car purchase, home repairs, wedding). Not recurring." />
             </h2>
             <button 
-             onClick={() => setShowOneOffExpenses(!showOneOffExpenses)}
-             className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={() => setShowOneOffExpenses(!showOneOffExpenses)}
+              className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
             >
-             {showOneOffExpenses ? '▼ Hide' : '▶ Show'}
-           </button>
-         </div>
+              {showOneOffExpenses ? '▼ Hide' : '▶ Show'}
+            </button>
+          </div>
           
-        {showOneOffExpenses && (
-  <div className="space-y-4">
-    {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
-      const actualIndex = oneOffExpenses.findIndex(e => e === expense);
-      return (
-        <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
-          <div className="flex-1">
-            <input 
-              type="text"
-              placeholder="Description (e.g., New car)"
-              value={expense.description}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].description = e.target.value;
-                setOneOffExpenses(newExpenses);
-              }}
-              className="w-full p-2 border rounded"
-            />
-          </div>
-          <div className="w-32">
-            <label className="text-xs text-gray-600">Age</label>
-            <input 
-              type="number"
-              placeholder="Age"
-              value={expense.age}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].age = Number(e.target.value);
-                setOneOffExpenses(newExpenses);
-              }}
-              className="w-full p-2 border rounded"
-              min="60"
-              max="100"
-            />
-          </div>
-          <div className="w-40">
-            <label className="text-xs text-gray-600">Amount</label>
-            <input 
-              type="number"
-              placeholder="Amount"
-              value={expense.amount}
-              onChange={(e) => {
-                const newExpenses = [...oneOffExpenses];
-                newExpenses[actualIndex].amount = Number(e.target.value);
-                setOneOffExpenses(newExpenses);
-              }}
-              className="w-full p-2 border rounded"
-              step="1000"
-            />
-          </div>
-          <button 
-            onClick={() => {
-              const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
-              setOneOffExpenses(newExpenses);
-            }}
-            className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-          >
-            Remove
-          </button>
+          {showOneOffExpenses && (
+            <div className="space-y-4">
+              {[...oneOffExpenses].sort((a, b) => a.age - b.age).map((expense, sortedIndex) => {
+                const actualIndex = oneOffExpenses.findIndex(e => e === expense);
+                return (
+                  <div key={actualIndex} className="flex items-center gap-4 p-3 bg-gray-50 rounded">
+                    <div className="flex-1">
+                      <input 
+                        type="text"
+                        placeholder="Description (e.g., New car)"
+                        value={expense.description}
+                        onChange={(e) => {
+                          const newExpenses = [...oneOffExpenses];
+                          newExpenses[actualIndex].description = e.target.value;
+                          setOneOffExpenses(newExpenses);
+                        }}
+                        className="w-full p-2 border rounded"
+                      />
+                    </div>
+                    <div className="w-32">
+                      <label className="text-xs text-gray-600">Age</label>
+                      <input 
+                        type="number"
+                        placeholder="Age"
+                        value={expense.age}
+                        onChange={(e) => {
+                          const newExpenses = [...oneOffExpenses];
+                          newExpenses[actualIndex].age = Number(e.target.value);
+                          setOneOffExpenses(newExpenses);
+                        }}
+                        className="w-full p-2 border rounded"
+                        min={retirementAge}
+                        max="100"
+                      />
+                    </div>
+                    <div className="w-40">
+                      <label className="text-xs text-gray-600">Amount</label>
+                      <input 
+                        type="number"
+                        placeholder="Amount"
+                        value={expense.amount}
+                        onChange={(e) => {
+                          const newExpenses = [...oneOffExpenses];
+                          newExpenses[actualIndex].amount = Number(e.target.value);
+                          setOneOffExpenses(newExpenses);
+                        }}
+                        className="w-full p-2 border rounded"
+                        step="1000"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const newExpenses = oneOffExpenses.filter((_, i) => i !== actualIndex);
+                        setOneOffExpenses(newExpenses);
+                      }}
+                      className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+              
+              <button 
+                onClick={() => {
+                  setOneOffExpenses([...oneOffExpenses, { description: '', age: retirementAge + 5, amount: 50000 }]);
+                }}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                + Add One-Off Expense
+              </button>
+              
+              {oneOffExpenses.length > 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+                  <div className="font-semibold text-gray-900 mb-2">Summary</div>
+                  <div className="text-sm space-y-1">
+                    <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
+                    <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      );
-    })}
-    
-    <button 
-      onClick={() => {
-        setOneOffExpenses([...oneOffExpenses, { description: '', age: 65, amount: 50000 }]);
-      }}
-      className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-    >
-      + Add One-Off Expense
-    </button>
-    
-    {oneOffExpenses.length > 0 && (
-      <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
-        <div className="font-semibold text-gray-900 mb-2">Summary</div>
-        <div className="text-sm space-y-1">
-          <div><strong>Total one-off expenses:</strong> {formatCurrency(oneOffExpenses.reduce((sum, e) => sum + e.amount, 0))}</div>
-          <div><strong>Number of expenses:</strong> {oneOffExpenses.length}</div>
-          </div>
-        </div>
-    )}
-    </div>     
-    )}          
-    </div>      
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
@@ -1099,7 +1185,7 @@ const RetirementCalculator = () => {
                 </thead>
                 <tbody>
                   {Object.keys(formalTestResults).map((key) => {
-  const test: any = formalTestResults[key as keyof typeof formalTestResults];
+                    const test: any = formalTestResults[key as keyof typeof formalTestResults];
                     return (
                       <tr key={key} className={test.passed ? 'bg-green-50 hover:bg-green-100 cursor-pointer' : 'bg-red-50 hover:bg-red-100 cursor-pointer'} onClick={() => setSelectedFormalTest(key)}>
                         <td className="p-2 font-bold border">{test.name}</td>
@@ -1182,8 +1268,8 @@ const RetirementCalculator = () => {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="age" />
-                 <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
-                 <Tooltip formatter={(val) => formatCurrency(val as number)} />
+                  <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
+                  <Tooltip formatter={(val) => formatCurrency(val as number)} />
                   <Legend />
                   <Line type="monotone" dataKey="Total Balance" stroke="#2563eb" strokeWidth={3} />
                   <Line type="monotone" dataKey="Main Super" stroke="#10b981" strokeWidth={2} />
@@ -1211,7 +1297,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v8.3
+          Australian Retirement Planning Tool v10.1
         </div>
       </div>
     </div>
@@ -1219,4 +1305,3 @@ const RetirementCalculator = () => {
 };
 
 export default RetirementCalculator;
-
