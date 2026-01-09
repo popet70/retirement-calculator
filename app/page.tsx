@@ -534,9 +534,9 @@ const RetirementCalculator = () => {
       const spendingMultiplier = r.year <= 10 ? Math.pow(0.982, r.year - 1) : 
                                   r.year <= 20 ? Math.pow(0.982, 9) * Math.pow(0.986, r.year - 10) :
                                   Math.pow(0.982, 9) * Math.pow(0.986, 10) * Math.pow(0.999, r.year - 20);
-      const inflationAdjustedSpending = baseSpending * Math.pow(1.025, r.year - 1);
+      const inflationAdjustedSpending = baseSpending * Math.pow(1 + r.cpiRate / 100, r.year - 1);
       const splurgeAddition = (splurgeAmount > 0 && r.age >= splurgeStartAge && r.age <= splurgeStartAge + splurgeDuration - 1) 
-                              ? splurgeAmount * Math.pow(1.025, r.year - 1) : 0;
+                              ? splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1) : 0;
       const oneOffTotal = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
       const healthCosts = 0; // Would be 30000 if health shock enabled and year >= 15
 
