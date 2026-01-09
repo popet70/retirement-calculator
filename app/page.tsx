@@ -391,7 +391,7 @@ const RetirementCalculator = () => {
 
       results.push({
         year, age, mainSuper, seqBuffer, cashAccount, totalBalance,
-        spending: totalSpending, income: totalIncome, agePension,
+        spending: totalSpending, income: totalIncome, agePension, pensionIncome: indexedPensionIncome,
         withdrawn, minDrawdown, superDrawnForMinimum,
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase
       });
@@ -489,6 +489,16 @@ const RetirementCalculator = () => {
       'Cash': toDisplayValue(r.cashAccount, r.year),
       'Spending': toDisplayValue(r.spending, r.year),
       'Income': toDisplayValue(r.income, r.year)
+    }));
+  }, [simulationResults, showNominalDollars]);
+
+  const pensionChartData = useMemo(() => {
+    if (!simulationResults) return [];
+    return simulationResults.map((r: any) => ({
+      age: r.age,
+      'Age Pension': toDisplayValue(r.agePension, r.year),
+      'PSS/CSS Pension': toDisplayValue(r.pensionIncome, r.year),
+      'Total Income': toDisplayValue(r.income, r.year)
     }));
   }, [simulationResults, showNominalDollars]);
 
@@ -832,16 +842,11 @@ const RetirementCalculator = () => {
               </div>
 
               {/* Age Pension Over Time Chart */}
-              {simulationResults && simulationResults.length > 0 && (
+              {pensionChartData && pensionChartData.length > 0 && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Age Pension Over Time</h3>
                   <ResponsiveContainer width="100%" height={250}>
-                    <ComposedChart data={simulationResults.map((r: any) => ({
-                      age: r.age,
-                      'Age Pension': toDisplayValue(r.agePension, r.year),
-                      'PSS/CSS Pension': toDisplayValue(r.income - r.agePension, r.year),
-                      'Total Income': toDisplayValue(r.income, r.year)
-                    }))}>
+                    <ComposedChart data={pensionChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="age" label={{ value: 'Age', position: 'insideBottom', offset: -5 }} />
                       <YAxis tickFormatter={(val) => ((val as number)/1000).toFixed(0) + 'k'} />
