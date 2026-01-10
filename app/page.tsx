@@ -595,35 +595,120 @@ const RetirementCalculator = () => {
     const allResults = [];
     const failureAnalysis = [];
     
-    for (let i = 0; i < monteCarloRuns; i++) {
-      let returns: number[] = [];
+    // For Complete Blocks method, determine the actual number of unique scenarios
+    let actualRuns = monteCarloRuns;
+    let uniqueBlocksMap = new Map(); // Track unique starting years for Complete Blocks
+    
+    if (historicalMethod === 'block') {
+      // Complete 35-year blocks: maximum possible is (dataLength - 35 + 1)
+      const maxUniqueBlocks = historicalMarketData.length - 35 + 1;
+      actualRuns = Math.min(monteCarloRuns, maxUniqueBlocks);
       
-      if (historicalMethod === 'shuffle') {
-        // Method 1: Shuffled years - random sampling with replacement
-        for (let year = 0; year < 35; year++) {
-          const randomIdx = Math.floor(Math.random() * historicalMarketData.length);
-          returns.push(historicalMarketData[randomIdx].return);
+      // Pre-generate all unique starting indices
+      const allStartIndices = Array.from({ length: maxUniqueBlocks }, (_, i) => i);
+      
+      // If user wants fewer than max, randomly select which ones to use
+      if (actualRuns < maxUniqueBlocks) {
+        // Shuffle and take first actualRuns
+        for (let i = allStartIndices.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [allStartIndices[i], allStartIndices[j]] = [allStartIndices[j], allStartIndices[i]];
         }
-      } else if (historicalMethod === 'block') {
-        // Method 2: Complete 35-year blocks
-        const maxStartIdx = historicalMarketData.length - 35;
-        const startIdx = Math.floor(Math.random() * (maxStartIdx + 1));
+        allStartIndices.length = actualRuns;
+      }
+      
+      // Run each unique block exactly once
+      for (let i = 0; i < actualRuns; i++) {
+        const startIdx = allStartIndices[i];
+        const startYear = historicalMarketData[startIdx].year;
+        const endYear = historicalMarketData[startIdx + 34].year;
+        
+        let returns: number[] = [];
         for (let year = 0; year < 35; year++) {
           returns.push(historicalMarketData[startIdx + year].return);
         }
-      } else {
-        // Method 3: Overlapping block bootstrap (default)
-        while (returns.length < 35) {
-          const maxStartIdx = historicalMarketData.length - blockSize;
-          const startIdx = Math.floor(Math.random() * (maxStartIdx + 1));
-          for (let j = 0; j < blockSize && returns.length < 35; j++) {
-            returns.push(historicalMarketData[startIdx + j].return);
+        
+        const result = runSimulation(returns, inflationRate, false, 35);
+        allResults.push(result);
+        
+        // Track this unique block
+        uniqueBlocksMap.set(i, { startYear, endYear, startIdx });
+        
+        // Analyze if this scenario failed
+        const failed = result.length < 35 || result[result.length - 1].totalBalance <= 0;
+        if (failed) {
+          const failureYear = result.length;
+          const failureAge = result[result.length - 1]?.age || 0;
+          
+          let earlyReturns = returns.slice(0, Math.min(10, returns.length));
+          let avgEarlyReturn = earlyReturns.reduce((a, b) => a + b, 0) / earlyReturns.length;
+          
+          let worstStreak = 0;
+          let worstStreakStart = 0;
+          let currentStreak = 0;
+          let currentStreakStart = 0;
+          
+          for (let j = 0; j < returns.length; j++) {
+            if (returns[j] < 0) {
+              if (currentStreak === 0) currentStreakStart = j + 1;
+              currentStreak++;
+              if (currentStreak > worstStreak) {
+                worstStreak = currentStreak;
+                worstStreakStart = currentStreakStart;
+              }
+            } else {
+              currentStreak = 0;
+            }
           }
+          
+          let primaryCause = '';
+          if (worstStreak >= 3 && worstStreakStart <= 5) {
+            primaryCause = 'Early sequence risk';
+          } else if (avgEarlyReturn < 0) {
+            primaryCause = 'Poor early returns';
+          } else if (worstStreak >= 4) {
+            primaryCause = 'Extended bear market';
+          } else {
+            primaryCause = 'Gradual depletion';
+          }
+          
+          failureAnalysis.push({
+            scenarioNumber: i + 1,
+            failureYear: failureYear,
+            failureAge: failureAge,
+            avgEarlyReturn: avgEarlyReturn,
+            worstStreak: worstStreak,
+            worstStreakStart: worstStreakStart,
+            primaryCause: primaryCause,
+            returns: returns,
+            historicalPeriod: `${startYear}-${endYear}` // Track which historical period failed
+          });
         }
       }
-      
-      const result = runSimulation(returns, inflationRate, false, 35);
-      allResults.push(result);
+    } else {
+      // Shuffle or Overlapping methods - use normal loop
+      for (let i = 0; i < monteCarloRuns; i++) {
+        let returns: number[] = [];
+        
+        if (historicalMethod === 'shuffle') {
+          // Method 1: Shuffled years - random sampling with replacement
+          for (let year = 0; year < 35; year++) {
+            const randomIdx = Math.floor(Math.random() * historicalMarketData.length);
+            returns.push(historicalMarketData[randomIdx].return);
+          }
+        } else {
+          // Method 3: Overlapping block bootstrap (default)
+          while (returns.length < 35) {
+            const maxStartIdx = historicalMarketData.length - blockSize;
+            const startIdx = Math.floor(Math.random() * (maxStartIdx + 1));
+            for (let j = 0; j < blockSize && returns.length < 35; j++) {
+              returns.push(historicalMarketData[startIdx + j].return);
+            }
+          }
+        }
+        
+        const result = runSimulation(returns, inflationRate, false, 35);
+        allResults.push(result);
       
       // Analyze if this scenario failed
       const failed = result.length < 35 || result[result.length - 1].totalBalance <= 0;
@@ -677,10 +762,12 @@ const RetirementCalculator = () => {
           returns: returns
         });
       }
+      }
+    }
     }
 
     const successful = allResults.filter(r => r.length === 35 && r[34].totalBalance > 0).length;
-    const successRate = (successful / monteCarloRuns) * 100;
+    const successRate = (successful / actualRuns) * 100;
     const finalBalances = allResults.map(r => {
       const lastYear = r[r.length - 1];
       return lastYear ? lastYear.totalBalance : 0;
@@ -741,7 +828,9 @@ const RetirementCalculator = () => {
       percentiles: percentiles,
       method: historicalMethod,
       dataYears: historicalMarketData.length,
-      failureStats: failureStats
+      failureStats: failureStats,
+      actualRuns: actualRuns,
+      uniqueBlocksMap: historicalMethod === 'block' ? uniqueBlocksMap : null
     };
   };
 
@@ -1737,7 +1826,11 @@ const RetirementCalculator = () => {
                   historicalMonteCarloResults.method === 'overlapping' ? `${blockSize}-year block bootstrap` :
                   'Complete 35-year sequences'
                 }</div>
-                <div>• <strong>Simulations:</strong> {monteCarloRuns.toLocaleString()} scenarios sampled from actual market history</div>
+                <div>• <strong>Simulations:</strong> {
+                  historicalMonteCarloResults.method === 'block' 
+                    ? `${historicalMonteCarloResults.actualRuns} unique historical periods tested (all possible 35-year blocks from 1928-2025)`
+                    : `${monteCarloRuns.toLocaleString()} scenarios sampled from actual market history`
+                }</div>
                 <div>• <strong>Advantage:</strong> Real crash patterns, real recoveries, real correlations - not theoretical assumptions</div>
               </div>
             </div>
@@ -1784,6 +1877,24 @@ const RetirementCalculator = () => {
                       <div>• <strong>Gradual depletion</strong> suggests spending may be too high even in moderate historical scenarios. Consider reducing base spending or increasing initial portfolio.</div>
                     )}
                     <div>• These failures represent <strong>real historical sequences</strong> from 1928-2025. On average, failures occurred at Year {historicalMonteCarloResults.failureStats.avgFailureYear} (Age {historicalMonteCarloResults.failureStats.avgFailureAge}), giving you early warning to adjust spending.</div>
+                    
+                    {/* Show specific failing periods for Complete Blocks method */}
+                    {historicalMonteCarloResults.method === 'block' && historicalMonteCarloResults.failureStats.allFailures && historicalMonteCarloResults.failureStats.allFailures.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-red-200">
+                        <div className="font-semibold mb-2">📅 Specific Historical Periods That Failed:</div>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          {historicalMonteCarloResults.failureStats.allFailures.map((failure: any, idx: number) => (
+                            <div key={idx} className="bg-red-100 p-2 rounded">
+                              <span className="font-semibold">{failure.historicalPeriod}</span>
+                              <span className="text-gray-600"> - Failed at Year {failure.failureYear}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-2 italic">
+                          These are the actual retirement start years that would have resulted in portfolio depletion based on real historical market returns.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
