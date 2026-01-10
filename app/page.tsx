@@ -459,6 +459,8 @@ const RetirementCalculator = () => {
 
   const runMonteCarlo = () => {
     const allResults = [];
+    const failureAnalysis = [];
+    
     for (let i = 0; i < monteCarloRuns; i++) {
       const returns = [];
       for (let year = 0; year < 35; year++) {
@@ -470,6 +472,59 @@ const RetirementCalculator = () => {
       }
       const result = runSimulation(returns, inflationRate, false, 35);
       allResults.push(result);
+      
+      // Analyze if this scenario failed
+      const failed = result.length < 35 || result[result.length - 1].totalBalance <= 0;
+      if (failed) {
+        const failureYear = result.length;
+        const failureAge = result[result.length - 1]?.age || 0;
+        
+        // Analyze the failure
+        let earlyReturns = returns.slice(0, Math.min(10, returns.length));
+        let avgEarlyReturn = earlyReturns.reduce((a, b) => a + b, 0) / earlyReturns.length;
+        
+        // Find worst consecutive years
+        let worstStreak = 0;
+        let worstStreakStart = 0;
+        let currentStreak = 0;
+        let currentStreakStart = 0;
+        
+        for (let j = 0; j < returns.length; j++) {
+          if (returns[j] < 0) {
+            if (currentStreak === 0) currentStreakStart = j + 1;
+            currentStreak++;
+            if (currentStreak > worstStreak) {
+              worstStreak = currentStreak;
+              worstStreakStart = currentStreakStart;
+            }
+          } else {
+            currentStreak = 0;
+          }
+        }
+        
+        // Determine primary failure cause
+        let primaryCause = '';
+        if (worstStreak >= 3 && worstStreakStart <= 5) {
+          primaryCause = 'Early sequence risk';
+        } else if (avgEarlyReturn < 0) {
+          primaryCause = 'Poor early returns';
+        } else if (worstStreak >= 4) {
+          primaryCause = 'Extended bear market';
+        } else {
+          primaryCause = 'Gradual depletion';
+        }
+        
+        failureAnalysis.push({
+          scenarioNumber: i + 1,
+          failureYear: failureYear,
+          failureAge: failureAge,
+          avgEarlyReturn: avgEarlyReturn,
+          worstStreak: worstStreak,
+          worstStreakStart: worstStreakStart,
+          primaryCause: primaryCause,
+          returns: returns
+        });
+      }
     }
 
     const successful = allResults.filter(r => r.length === 35 && r[34].totalBalance > 0).length;
@@ -502,15 +557,43 @@ const RetirementCalculator = () => {
         closestIndex = i;
       }
     }
+    
+    // Aggregate failure statistics
+    let failureStats = null;
+    if (failureAnalysis.length > 0) {
+      const avgFailureYear = failureAnalysis.reduce((sum, f) => sum + f.failureYear, 0) / failureAnalysis.length;
+      const avgFailureAge = failureAnalysis.reduce((sum, f) => sum + f.failureAge, 0) / failureAnalysis.length;
+      
+      const causeCount: { [key: string]: number } = {};
+      failureAnalysis.forEach(f => {
+        causeCount[f.primaryCause] = (causeCount[f.primaryCause] || 0) + 1;
+      });
+      
+      const topCauses = Object.entries(causeCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cause, count]) => ({ cause, count, percentage: (count / failureAnalysis.length * 100) }));
+      
+      failureStats = {
+        totalFailures: failureAnalysis.length,
+        avgFailureYear: Math.round(avgFailureYear),
+        avgFailureAge: Math.round(avgFailureAge),
+        topCauses: topCauses,
+        allFailures: failureAnalysis.slice(0, 10) // Keep first 10 for detailed view
+      };
+    }
+    
     return {
       medianSimulation: allResults[closestIndex],
       successRate: successRate,
-      percentiles: percentiles
+      percentiles: percentiles,
+      failureStats: failureStats
     };
   };
 
   const runHistoricalMonteCarlo = () => {
     const allResults = [];
+    const failureAnalysis = [];
     
     for (let i = 0; i < monteCarloRuns; i++) {
       let returns: number[] = [];
@@ -541,6 +624,59 @@ const RetirementCalculator = () => {
       
       const result = runSimulation(returns, inflationRate, false, 35);
       allResults.push(result);
+      
+      // Analyze if this scenario failed
+      const failed = result.length < 35 || result[result.length - 1].totalBalance <= 0;
+      if (failed) {
+        const failureYear = result.length;
+        const failureAge = result[result.length - 1]?.age || 0;
+        
+        // Analyze the failure
+        let earlyReturns = returns.slice(0, Math.min(10, returns.length));
+        let avgEarlyReturn = earlyReturns.reduce((a, b) => a + b, 0) / earlyReturns.length;
+        
+        // Find worst consecutive years
+        let worstStreak = 0;
+        let worstStreakStart = 0;
+        let currentStreak = 0;
+        let currentStreakStart = 0;
+        
+        for (let j = 0; j < returns.length; j++) {
+          if (returns[j] < 0) {
+            if (currentStreak === 0) currentStreakStart = j + 1;
+            currentStreak++;
+            if (currentStreak > worstStreak) {
+              worstStreak = currentStreak;
+              worstStreakStart = currentStreakStart;
+            }
+          } else {
+            currentStreak = 0;
+          }
+        }
+        
+        // Determine primary failure cause
+        let primaryCause = '';
+        if (worstStreak >= 3 && worstStreakStart <= 5) {
+          primaryCause = 'Early sequence risk';
+        } else if (avgEarlyReturn < 0) {
+          primaryCause = 'Poor early returns';
+        } else if (worstStreak >= 4) {
+          primaryCause = 'Extended bear market';
+        } else {
+          primaryCause = 'Gradual depletion';
+        }
+        
+        failureAnalysis.push({
+          scenarioNumber: i + 1,
+          failureYear: failureYear,
+          failureAge: failureAge,
+          avgEarlyReturn: avgEarlyReturn,
+          worstStreak: worstStreak,
+          worstStreakStart: worstStreakStart,
+          primaryCause: primaryCause,
+          returns: returns
+        });
+      }
     }
 
     const successful = allResults.filter(r => r.length === 35 && r[34].totalBalance > 0).length;
@@ -574,12 +710,38 @@ const RetirementCalculator = () => {
       }
     }
     
+    // Aggregate failure statistics
+    let failureStats = null;
+    if (failureAnalysis.length > 0) {
+      const avgFailureYear = failureAnalysis.reduce((sum, f) => sum + f.failureYear, 0) / failureAnalysis.length;
+      const avgFailureAge = failureAnalysis.reduce((sum, f) => sum + f.failureAge, 0) / failureAnalysis.length;
+      
+      const causeCount: { [key: string]: number } = {};
+      failureAnalysis.forEach(f => {
+        causeCount[f.primaryCause] = (causeCount[f.primaryCause] || 0) + 1;
+      });
+      
+      const topCauses = Object.entries(causeCount)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cause, count]) => ({ cause, count, percentage: (count / failureAnalysis.length * 100) }));
+      
+      failureStats = {
+        totalFailures: failureAnalysis.length,
+        avgFailureYear: Math.round(avgFailureYear),
+        avgFailureAge: Math.round(avgFailureAge),
+        topCauses: topCauses,
+        allFailures: failureAnalysis.slice(0, 10) // Keep first 10 for detailed view
+      };
+    }
+    
     return {
       medianSimulation: allResults[closestIndex],
       successRate: successRate,
       percentiles: percentiles,
       method: historicalMethod,
-      dataYears: historicalMarketData.length
+      dataYears: historicalMarketData.length,
+      failureStats: failureStats
     };
   };
 
@@ -1488,6 +1650,53 @@ const RetirementCalculator = () => {
                 <div className="text-2xl font-bold">{formatCurrency(toDisplayValue(monteCarloResults.percentiles.p50, 35))}</div>
               </div>
             </div>
+            
+            {/* Failure Analysis Section */}
+            {monteCarloResults.failureStats && monteCarloResults.failureStats.totalFailures > 0 && (
+              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded">
+                <h3 className="text-lg font-semibold text-red-900 mb-3">
+                  ⚠️ Failure Analysis ({monteCarloResults.failureStats.totalFailures} scenarios failed)
+                </h3>
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="text-sm text-gray-700 font-semibold mb-2">Average Failure Point</div>
+                    <div className="text-xl font-bold text-red-700">
+                      Year {monteCarloResults.failureStats.avgFailureYear} (Age {monteCarloResults.failureStats.avgFailureAge})
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-700 font-semibold mb-2">Primary Failure Causes</div>
+                    <div className="space-y-1">
+                      {monteCarloResults.failureStats.topCauses.map((cause: any, idx: number) => (
+                        <div key={idx} className="text-sm">
+                          <span className="font-semibold">{cause.cause}:</span> {cause.count} scenarios ({cause.percentage.toFixed(0)}%)
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4 p-3 bg-white rounded border border-red-300">
+                  <div className="text-sm font-semibold text-gray-700 mb-2">💡 What This Means:</div>
+                  <div className="text-sm text-gray-700 space-y-1">
+                    {monteCarloResults.failureStats.topCauses[0]?.cause === 'Early sequence risk' && (
+                      <div>• <strong>Early sequence risk</strong> is the main threat. Poor returns in the first 5 years deplete your portfolio before it can recover. Consider a larger sequencing buffer or more conservative initial withdrawal rate.</div>
+                    )}
+                    {monteCarloResults.failureStats.topCauses[0]?.cause === 'Poor early returns' && (
+                      <div>• <strong>Poor early returns</strong> damage your portfolio when it's largest. Consider increasing your sequencing buffer from ${(sequencingBuffer/1000).toFixed(0)}k or reducing initial spending.</div>
+                    )}
+                    {monteCarloResults.failureStats.topCauses[0]?.cause === 'Extended bear market' && (
+                      <div>• <strong>Extended bear markets</strong> (4+ consecutive down years) are the main risk. Your plan may need more conservative assumptions or a larger safety buffer.</div>
+                    )}
+                    {monteCarloResults.failureStats.topCauses[0]?.cause === 'Gradual depletion' && (
+                      <div>• <strong>Gradual depletion</strong> suggests spending may be too high relative to portfolio size. Consider reducing base spending or increasing initial portfolio.</div>
+                    )}
+                    <div>• On average, failures occur at Year {monteCarloResults.failureStats.avgFailureYear} (Age {monteCarloResults.failureStats.avgFailureAge}), giving you early warning signs to adjust spending if needed.</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
