@@ -1741,6 +1741,53 @@ const RetirementCalculator = () => {
                 <div>• <strong>Advantage:</strong> Real crash patterns, real recoveries, real correlations - not theoretical assumptions</div>
               </div>
             </div>
+            
+            {/* Failure Analysis Section */}
+            {historicalMonteCarloResults.failureStats && historicalMonteCarloResults.failureStats.totalFailures > 0 && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded">
+                <h3 className="text-lg font-semibold text-red-900 mb-3">
+                  ⚠️ Failure Analysis ({historicalMonteCarloResults.failureStats.totalFailures} historical scenarios failed)
+                </h3>
+                
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <div className="text-sm text-gray-700 font-semibold mb-2">Average Failure Point</div>
+                    <div className="text-xl font-bold text-red-700">
+                      Year {historicalMonteCarloResults.failureStats.avgFailureYear} (Age {historicalMonteCarloResults.failureStats.avgFailureAge})
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-gray-700 font-semibold mb-2">Primary Failure Causes</div>
+                    <div className="space-y-1">
+                      {historicalMonteCarloResults.failureStats.topCauses.map((cause: any, idx: number) => (
+                        <div key={idx} className="text-sm">
+                          <span className="font-semibold">{cause.cause}:</span> {cause.count} scenarios ({cause.percentage.toFixed(0)}%)
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4 p-3 bg-white rounded border border-red-300">
+                  <div className="text-sm font-semibold text-gray-700 mb-2">💡 What This Means (Based on Real History):</div>
+                  <div className="text-sm text-gray-700 space-y-1">
+                    {historicalMonteCarloResults.failureStats.topCauses[0]?.cause === 'Early sequence risk' && (
+                      <div>• <strong>Early sequence risk</strong> from historical crashes (like 1929 or 2008 immediately after retirement) is the main threat. These real historical scenarios depleted portfolios before recovery. Consider a larger sequencing buffer or more conservative initial withdrawal rate.</div>
+                    )}
+                    {historicalMonteCarloResults.failureStats.topCauses[0]?.cause === 'Poor early returns' && (
+                      <div>• <strong>Poor early returns</strong> (similar to retiring in 1929, 1973, or 2000) damage your portfolio when it's largest. Consider increasing your sequencing buffer from ${(sequencingBuffer/1000).toFixed(0)}k or reducing initial spending.</div>
+                    )}
+                    {historicalMonteCarloResults.failureStats.topCauses[0]?.cause === 'Extended bear market' && (
+                      <div>• <strong>Extended bear markets</strong> (like 1929-1932, 1973-1974, or 2000-2002) are the main risk in actual history. Your plan may need more conservative assumptions or a larger safety buffer.</div>
+                    )}
+                    {historicalMonteCarloResults.failureStats.topCauses[0]?.cause === 'Gradual depletion' && (
+                      <div>• <strong>Gradual depletion</strong> suggests spending may be too high even in moderate historical scenarios. Consider reducing base spending or increasing initial portfolio.</div>
+                    )}
+                    <div>• These failures represent <strong>real historical sequences</strong> from 1928-2025. On average, failures occurred at Year {historicalMonteCarloResults.failureStats.avgFailureYear} (Age {historicalMonteCarloResults.failureStats.avgFailureAge}), giving you early warning to adjust spending.</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
