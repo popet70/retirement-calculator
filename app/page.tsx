@@ -764,7 +764,6 @@ const RetirementCalculator = () => {
       }
       }
     }
-    }
 
     const successful = allResults.filter(r => r.length === 35 && r[34].totalBalance > 0).length;
     const successRate = (successful / actualRuns) * 100;
