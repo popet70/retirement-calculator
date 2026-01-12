@@ -78,6 +78,8 @@ const RetirementCalculator = () => {
   const [agedCareAnnualCost, setAgedCareAnnualCost] = useState(65000); // Basic + means-tested fees
   const [deterministicAgedCareAge, setDeterministicAgedCareAge] = useState(85);
   const [agedCareDuration, setAgedCareDuration] = useState(3); // Average stay duration
+  const [spendingReductionInCare, setSpendingReductionInCare] = useState(0.45); // 45% reduction while in care
+  const [deathInCare, setDeathInCare] = useState(true); // Assume death in aged care (vs exit)
   
   // Partner configuration for aged care
   const [partnerAge, setPartnerAge] = useState(55); // Simone's age
@@ -336,6 +338,10 @@ const RetirementCalculator = () => {
       if (age >= deterministicAgedCareAge && age < deterministicAgedCareAge + agedCareDuration) {
         inAgedCare = true;
         newYearsInCare = age - deterministicAgedCareAge + 1;
+      } else if (age >= deterministicAgedCareAge + agedCareDuration) {
+        // Exited care after completing duration
+        inAgedCare = false;
+        newYearsInCare = 0;
       }
     } else {
       // Probabilistic: use age-based probability and random value
@@ -426,6 +432,10 @@ const RetirementCalculator = () => {
     let yearsInAgedCare = 0;
     let radPaid = 0; // Track if RAD has been paid (refundable on exit)
     const agedCareRandomValue = Math.random(); // Single random value for probabilistic aged care
+    
+    // Partner survival tracking (for aged care death scenario)
+    let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
+    let spendingAdjustedForSingle = false; // Track if we've already adjusted to single
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -488,15 +498,42 @@ const RetirementCalculator = () => {
       
       // Aged care costs
       const agedCareCosts = getAgedCareCosts(age, year, cpiRate, agedCareRandomValue, inAgedCare, yearsInAgedCare);
+      
+      // Check if entering, in, or exiting aged care
+      const wasInCare = inAgedCare;
       inAgedCare = agedCareCosts.inAgedCare;
       yearsInAgedCare = agedCareCosts.yearsInCare;
+      
+      // AGED CARE SPENDING ADJUSTMENT
+      // When person enters aged care, reduce base spending (their expenses now covered by aged care fee)
+      if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
+        currentSpendingBase = currentSpendingBase * (1 - spendingReductionInCare);
+        spendingAdjustedForSingle = true; // Mark that we've adjusted
+      }
+      
+      // DEATH IN AGED CARE
+      // If person was in care and is now exiting, check if they died or recovered
+      if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
+        // Partner died in aged care - transition to single survivor
+        partnerAlive = false;
+        
+        // Adjust spending to single person level (70% of original couple spending)
+        // Note: We already reduced by spendingReductionInCare, now adjust to permanent single level
+        const originalCoupleSpending = baseSpending; // Store original for reference
+        currentSpendingBase = originalCoupleSpending * singleSpendingRatio;
+        
+        // Keep spendingAdjustedForSingle = true so we don't adjust again
+      } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
+        // Person recovered and exited care - restore couple spending
+        currentSpendingBase = currentSpendingBase / (1 - spendingReductionInCare);
+        spendingAdjustedForSingle = false;
+      }
       
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
       let radWithdrawn = 0;
       if (agedCareCosts.radRequired > 0) {
         radWithdrawn = agedCareCosts.radRequired;
-        // RAD comes from super - will be refunded when exiting care
-        radPaid = radWithdrawn;
+        // Note: radPaid will be set AFTER withdrawal to reflect actual amount paid
       }
       
       // When exiting aged care, RAD is refunded
@@ -519,15 +556,30 @@ const RetirementCalculator = () => {
       
       const totalSpending = inflationAdjustedSpending * spendingMultiplier + additionalCosts + oneOffAddition;
 
+      // Use dynamic Age Pension parameters based on current partner status
+      const currentPensionParams = (pensionRecipientType === 'couple' && !partnerAlive) 
+        ? {
+            eligibilityAge: 67,
+            maxPensionPerYear: 29754,  // Single rate (partner died)
+            assetTestThresholdHomeowner: 314000,
+            assetTestCutoffHomeowner: 695500,
+            assetTestThresholdNonHomeowner: 566000,
+            assetTestCutoffNonHomeowner: 947500,
+            assetTaperPerYear: 78,
+            incomeTestFreeArea: 5512,
+            incomeTaperRate: 0.50
+          }
+        : agePensionParams;
+
       const totalAssets = mainSuper + seqBuffer;
-      const indexedMaxPension = agePensionParams.maxPensionPerYear * Math.pow(1 + cpiRate / 100, year - 1);
-      const indexedThreshold = (isHomeowner ? agePensionParams.assetTestThresholdHomeowner : agePensionParams.assetTestThresholdNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
-      const indexedCutoff = (isHomeowner ? agePensionParams.assetTestCutoffHomeowner : agePensionParams.assetTestCutoffNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
-      const indexedTaper = agePensionParams.assetTaperPerYear * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedMaxPension = currentPensionParams.maxPensionPerYear * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedThreshold = (isHomeowner ? currentPensionParams.assetTestThresholdHomeowner : currentPensionParams.assetTestThresholdNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedCutoff = (isHomeowner ? currentPensionParams.assetTestCutoffHomeowner : currentPensionParams.assetTestCutoffNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedTaper = currentPensionParams.assetTaperPerYear * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedPensionIncome = totalPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
       
       let agePension = 0;
-      if (includeAgePension && age >= agePensionParams.eligibilityAge) {
+      if (includeAgePension && age >= currentPensionParams.eligibilityAge) {
         let assetTestPension = indexedMaxPension;
         if (totalAssets > indexedThreshold) {
           const excess = totalAssets - indexedThreshold;
@@ -536,11 +588,11 @@ const RetirementCalculator = () => {
         }
         if (totalAssets >= indexedCutoff) assetTestPension = 0;
 
-        const indexedIncomeTestFreeArea = agePensionParams.incomeTestFreeArea * Math.pow(1 + cpiRate / 100, year - 1);
+        const indexedIncomeTestFreeArea = currentPensionParams.incomeTestFreeArea * Math.pow(1 + cpiRate / 100, year - 1);
         let incomeTestPension = indexedMaxPension;
         if (indexedPensionIncome > indexedIncomeTestFreeArea) {
           const excessIncome = indexedPensionIncome - indexedIncomeTestFreeArea;
-          const reduction = excessIncome * agePensionParams.incomeTaperRate;
+          const reduction = excessIncome * currentPensionParams.incomeTaperRate;
           incomeTestPension = Math.max(0, indexedMaxPension - reduction);
         }
         agePension = Math.min(assetTestPension, incomeTestPension);
@@ -633,6 +685,9 @@ const RetirementCalculator = () => {
         if (radRemaining > 0) {
           radWithdrawn -= radRemaining; // Only paid what was available
         }
+        
+        // Track the actual amount paid for future refund
+        radPaid = radWithdrawn;
       }
       
       // STEP 4: RAD REFUND (if exiting aged care)
@@ -655,7 +710,8 @@ const RetirementCalculator = () => {
         spending: totalSpending, income: totalIncome, agePension, pensionIncome: indexedPensionIncome,
         withdrawn, minDrawdown, superDrawnForMinimum,
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
-        inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund
+        inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund,
+        partnerAlive
       });
 
       if (totalBalance <= 0) break;
@@ -1068,7 +1124,8 @@ const RetirementCalculator = () => {
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
-      includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration]);
+      includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
+      spendingReductionInCare, deathInCare, singleSpendingRatio]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1190,7 +1247,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 11.3 - Improved RAD Payment Logic</p>
+            <p className="text-gray-600">Version 12.0 - Aged Care Death & Single Survivor Transition</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1814,6 +1871,68 @@ const RetirementCalculator = () => {
                 </div>
               </div>
 
+              {pensionRecipientType === 'couple' && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                  <div className="font-semibold text-gray-900 mb-3">Couple-Specific Settings</div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Base spending reduction while in care: {(spendingReductionInCare * 100).toFixed(0)}%
+                        <InfoTooltip text="Person in aged care no longer needs their share of home expenses (covered by aged care fees). Typically 40-50% reduction." />
+                      </label>
+                      <input 
+                        type="range" 
+                        min="0" 
+                        max="60" 
+                        step="5"
+                        value={spendingReductionInCare * 100} 
+                        onChange={(e) => setSpendingReductionInCare(Number(e.target.value) / 100)} 
+                        className="w-full" 
+                      />
+                      <p className="text-xs text-gray-600 mt-1">
+                        Reduces base spending to avoid double-counting (home expenses + aged care fees)
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-3 p-3 bg-white rounded border">
+                      <input 
+                        type="checkbox" 
+                        checked={deathInCare} 
+                        onChange={(e) => setDeathInCare(e.target.checked)} 
+                        className="mt-1" 
+                        id="deathInCare"
+                      />
+                      <label htmlFor="deathInCare" className="text-sm flex-1">
+                        <span className="font-medium">Person dies in aged care (realistic default)</span>
+                        <p className="text-xs text-gray-600 mt-1">
+                          When checked: Partner dies in care, spending transitions to single survivor level ({(singleSpendingRatio * 100).toFixed(0)}%), 
+                          Age Pension switches to single rate. When unchecked: Person recovers and returns home, couple spending resumes.
+                        </p>
+                      </label>
+                    </div>
+
+                    {deathInCare && (
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Single survivor spending: {(singleSpendingRatio * 100).toFixed(0)}% of couple spending
+                          <InfoTooltip text="After partner dies, surviving person typically needs 70% of couple spending (not 50%) due to fixed costs." />
+                        </label>
+                        <input 
+                          type="range" 
+                          min="60" 
+                          max="80" 
+                          step="5"
+                          value={singleSpendingRatio * 100} 
+                          onChange={(e) => setSingleSpendingRatio(Number(e.target.value) / 100)} 
+                          className="w-full" 
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="p-4 bg-blue-50 border border-blue-200 rounded">
                 <div className="font-semibold text-gray-900 mb-2">Estimated Total Costs</div>
                 <div className="text-sm space-y-1">
@@ -2409,7 +2528,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v11.3
+          Australian Retirement Planning Tool v12.0
         </div>
       </div>
     </div>
