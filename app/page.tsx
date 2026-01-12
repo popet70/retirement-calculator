@@ -435,6 +435,7 @@ const RetirementCalculator = () => {
     // Partner survival tracking (for aged care death scenario)
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
     let spendingAdjustedForSingle = false; // Track if we've already adjusted to single
+    let spendingBaseBeforeAgedCare = 0; // Save spending base before aged care for restoration on exit
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -453,6 +454,9 @@ const RetirementCalculator = () => {
       // AGED CARE SPENDING ADJUSTMENT (must happen before guardrails)
       // When person enters aged care, adjust base spending to "person at home alone" level
       if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
+        // Save the current spending base before aged care adjustment (includes any prior guardrail changes)
+        spendingBaseBeforeAgedCare = currentSpendingBase;
+        // Adjust to person at home level
         currentSpendingBase = baseSpending * personAtHomeSpending;
         spendingAdjustedForSingle = true; // Mark that we've adjusted
       }
@@ -460,13 +464,27 @@ const RetirementCalculator = () => {
       // DEATH IN AGED CARE
       // If person was in care and is now exiting, check if they died or recovered
       if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
-        // Partner died in aged care - survivor continues at same spending level
+        // Partner died in aged care - survivor continues at appropriate spending level
         partnerAlive = false;
-        // Spending already at correct single level (personAtHomeSpending %), no change needed
+        
+        // Restore to the spending base from before aged care entered
+        // This preserves any legitimate guardrail adjustments from years 1-24
+        // while removing the aged care-specific cuts from years 25-29
+        if (spendingBaseBeforeAgedCare > 0) {
+          // Apply the single spending ratio to the pre-aged-care base
+          currentSpendingBase = spendingBaseBeforeAgedCare * personAtHomeSpending;
+        } else {
+          // Fallback if somehow not saved (shouldn't happen)
+          currentSpendingBase = baseSpending * personAtHomeSpending;
+        }
         
       } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
         // Person recovered and exited care - restore couple spending
-        currentSpendingBase = baseSpending; // Restore to original couple level
+        if (spendingBaseBeforeAgedCare > 0) {
+          currentSpendingBase = spendingBaseBeforeAgedCare; // Restore to pre-aged-care level
+        } else {
+          currentSpendingBase = baseSpending; // Fallback to original couple level
+        }
         spendingAdjustedForSingle = false;
       }
       
@@ -1248,7 +1266,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.4 - Guardrails See Aged Care Costs</p>
+            <p className="text-gray-600">Version 12.5 - Fix Spending After Aged Care Exit</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2511,7 +2529,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.4
+          Australian Retirement Planning Tool v12.5
         </div>
       </div>
     </div>
