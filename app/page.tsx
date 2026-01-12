@@ -597,14 +597,42 @@ const RetirementCalculator = () => {
       const totalSuperWithdrawn = superDrawnForMinimum + Math.max(0, netSpendingNeed - (withdrawn - Math.max(0, netSpendingNeed - cashAccount - seqBuffer)));
 
       // STEP 3: RAD PAYMENT (if entering aged care)
-      // RAD comes from main super and is held separately (will be refunded on exit)
-      if (radWithdrawn > 0 && mainSuper >= radWithdrawn) {
-        mainSuper -= radWithdrawn;
-      } else if (radWithdrawn > 0 && mainSuper < radWithdrawn) {
-        // Not enough in super for RAD - would need to access other assets
-        // For now, just take what's available
-        radWithdrawn = mainSuper;
-        mainSuper = 0;
+      // RAD cascades through accounts: Main Super → Buffer → Cash (like normal spending)
+      if (radWithdrawn > 0) {
+        let radRemaining = radWithdrawn;
+        
+        // Try Main Super first
+        if (mainSuper >= radRemaining) {
+          mainSuper -= radRemaining;
+          radRemaining = 0;
+        } else {
+          radRemaining -= mainSuper;
+          mainSuper = 0;
+          
+          // Then Sequencing Buffer
+          if (seqBuffer >= radRemaining) {
+            seqBuffer -= radRemaining;
+            radRemaining = 0;
+          } else {
+            radRemaining -= seqBuffer;
+            seqBuffer = 0;
+            
+            // Finally Cash Account
+            if (cashAccount >= radRemaining) {
+              cashAccount -= radRemaining;
+              radRemaining = 0;
+            } else {
+              radRemaining -= cashAccount;
+              cashAccount = 0;
+            }
+          }
+        }
+        
+        // If still short, record actual amount paid (partial RAD)
+        // This would trigger DAP in reality, but we keep it simple
+        if (radRemaining > 0) {
+          radWithdrawn -= radRemaining; // Only paid what was available
+        }
       }
       
       // STEP 4: RAD REFUND (if exiting aged care)
@@ -1162,7 +1190,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 11.2 - Scenario-Locked Aged Care</p>
+            <p className="text-gray-600">Version 11.3 - Improved RAD Payment Logic</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1705,7 +1733,7 @@ const RetirementCalculator = () => {
                         Probabilistic aged care modeling is only available with <strong>Monte Carlo</strong> or <strong>Historical Monte Carlo</strong> scenarios.
                       </p>
                       <p className="text-xs text-gray-600">
-                        To use probabilistic aged care: Go to "Test Scenarios" section below and select either "Monte Carlo" or "Historical MC".
+                        To use probabilistic aged care: Go to "Test Scenarios" section above and select either "Monte Carlo" or "Historical MC".
                       </p>
                     </div>
                   </>
@@ -2381,7 +2409,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v11.2
+          Australian Retirement Planning Tool v11.3
         </div>
       </div>
     </div>
