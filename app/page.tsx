@@ -739,9 +739,9 @@ const RetirementCalculator = () => {
       }
       
       // STEP 4: RAD REFUND (if exiting aged care)
-      // RAD is refunded to main super when exiting care
+      // RAD is refunded to cash (estate/beneficiary receives as cash, not super)
       if (radRefund > 0) {
-        mainSuper += radRefund;
+        cashAccount += radRefund;
       }
 
       // APPLY RETURNS:
@@ -1299,7 +1299,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 13.2 - Fix Historical Monte Carlo Charts</p>
+            <p className="text-gray-600">Version 13.3 - RAD Refund to Cash Account</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2690,7 +2690,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v13.2
+          Australian Retirement Planning Tool v13.3
         </div>
       </div>
     </div>
