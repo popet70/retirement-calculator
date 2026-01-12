@@ -89,6 +89,13 @@ const RetirementCalculator = () => {
   const [singleSpendingRatio, setSingleSpendingRatio] = useState(0.70); // Single needs 70% of couple spending
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
+  // Auto-switch aged care to deterministic when leaving Monte Carlo scenarios
+  useEffect(() => {
+    if (includeAgedCare && agedCareApproach === 'probabilistic' && !useMonteCarlo && !useHistoricalMonteCarlo) {
+      setAgedCareApproach('deterministic');
+    }
+  }, [useMonteCarlo, useHistoricalMonteCarlo, includeAgedCare, agedCareApproach]);
+
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
     const currentYear = 2026;
@@ -1155,7 +1162,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 11.1 - Aged Care with Scenario Guidance</p>
+            <p className="text-gray-600">Version 11.2 - Scenario-Locked Aged Care</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1646,42 +1653,62 @@ const RetirementCalculator = () => {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Modeling Approach</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center">
-                    <input 
-                      type="radio" 
-                      checked={agedCareApproach === 'deterministic'} 
-                      onChange={() => setAgedCareApproach('deterministic')} 
-                      className="mr-2" 
-                    />
-                    <span className="text-sm">Deterministic (specify age)</span>
-                  </label>
-                  <label className="flex items-center">
-                    <input 
-                      type="radio" 
-                      checked={agedCareApproach === 'probabilistic'} 
-                      onChange={() => setAgedCareApproach('probabilistic')} 
-                      className="mr-2" 
-                    />
-                    <span className="text-sm">Probabilistic (age-based risk)</span>
-                  </label>
-                </div>
                 
-                {agedCareApproach === 'deterministic' ? (
-                  <div className="mt-2 p-3 bg-blue-50 border-l-4 border-blue-500">
-                    <p className="text-xs text-gray-700">
-                      <strong>Deterministic approach:</strong> Works with ALL scenarios (Constant Return, Historical, Monte Carlo, Formal Tests). 
-                      You specify exactly when aged care starts and for how long. Good for stress testing specific scenarios.
-                    </p>
-                  </div>
+                {(useMonteCarlo || useHistoricalMonteCarlo) ? (
+                  // Monte Carlo scenarios - allow both options
+                  <>
+                    <div className="flex gap-4">
+                      <label className="flex items-center">
+                        <input 
+                          type="radio" 
+                          checked={agedCareApproach === 'deterministic'} 
+                          onChange={() => setAgedCareApproach('deterministic')} 
+                          className="mr-2" 
+                        />
+                        <span className="text-sm">Deterministic (specify age)</span>
+                      </label>
+                      <label className="flex items-center">
+                        <input 
+                          type="radio" 
+                          checked={agedCareApproach === 'probabilistic'} 
+                          onChange={() => setAgedCareApproach('probabilistic')} 
+                          className="mr-2" 
+                        />
+                        <span className="text-sm">Probabilistic (age-based risk)</span>
+                      </label>
+                    </div>
+                    
+                    {agedCareApproach === 'deterministic' ? (
+                      <div className="mt-2 p-3 bg-blue-50 border-l-4 border-blue-500">
+                        <p className="text-xs text-gray-700">
+                          <strong>Deterministic:</strong> All {monteCarloRuns.toLocaleString()} simulations will enter aged care at exactly age {deterministicAgedCareAge}. 
+                          Good for stress testing: "What if everyone needs aged care at 85?"
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="mt-2 p-3 bg-green-50 border-l-4 border-green-500">
+                        <p className="text-xs text-gray-700">
+                          <strong>Probabilistic (Recommended):</strong> Each of the {monteCarloRuns.toLocaleString()} simulations uses age-based probabilities. 
+                          Some will never need care, others will need it at different ages. This shows your true risk exposure.
+                        </p>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="mt-2 p-3 bg-amber-50 border-l-4 border-amber-500">
-                    <p className="text-xs text-gray-700">
-                      <strong>⚠️ Probabilistic approach requires Monte Carlo:</strong> Each simulation uses a random value to determine 
-                      if/when aged care is triggered based on age probabilities. Use Monte Carlo or Historical Monte Carlo scenarios to see 
-                      the range of outcomes. In other scenarios (Constant Return, Historical, Formal Tests), one random outcome will be selected.
-                    </p>
-                  </div>
+                  // Non-Monte Carlo scenarios - force deterministic
+                  <>
+                    <div className="p-4 bg-amber-50 border-2 border-amber-400 rounded-lg">
+                      <p className="text-base font-semibold text-amber-900 mb-2">
+                        ⚠️ Deterministic Mode Only
+                      </p>
+                      <p className="text-sm text-gray-700 mb-2">
+                        Probabilistic aged care modeling is only available with <strong>Monte Carlo</strong> or <strong>Historical Monte Carlo</strong> scenarios.
+                      </p>
+                      <p className="text-xs text-gray-600">
+                        To use probabilistic aged care: Go to "Test Scenarios" section above and select either "Monte Carlo" or "Historical MC".
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -2243,7 +2270,7 @@ const RetirementCalculator = () => {
                       : `Probabilistic - Age-based risk with average ${agedCareDuration}-year duration`}. 
                     RAD: {formatCurrency(agedCareRAD)} (refundable), Annual: {formatCurrency(agedCareAnnualCost)}.
                     {agedCareApproach === 'probabilistic' && !useMonteCarlo && !useHistoricalMonteCarlo && 
-                      ' ⚠️ Note: Probabilistic mode shows one random outcome - use Monte Carlo to see range of possibilities.'}
+                      ' ⚠️ Showing one random outcome - results will vary on each refresh. Use Monte Carlo to see full risk range.'}
                   </span>
                 </div>
               </div>
@@ -2354,7 +2381,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v11.1
+          Australian Retirement Planning Tool v11.2
         </div>
       </div>
     </div>
