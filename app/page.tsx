@@ -1298,7 +1298,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 13.0 - Partner Mortality Feature</p>
+            <p className="text-gray-600">Version 13.1 - Partner Mortality Warning Banners</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1545,6 +1545,28 @@ const RetirementCalculator = () => {
               {pensionChartData && pensionChartData.length > 0 && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Age Pension Over Time</h3>
+                  
+                  {/* Partner Mortality Warning */}
+                  {includePartnerMortality && pensionRecipientType === 'couple' && (
+                    <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded">
+                      <div className="flex items-start gap-2">
+                        <span className="text-purple-600 text-lg">⚠️</span>
+                        <div className="text-sm">
+                          <div className="font-semibold text-gray-900 mb-1">Partner Mortality: One Possible Outcome</div>
+                          <div className="text-gray-700">
+                            This chart shows ONE scenario where your partner dies at a specific age (based on mortality probabilities). 
+                            Income drops when partner dies: Age Pension switches to single rate, PSS/CSS reduces to {(pensionReversionary * 100).toFixed(0)}% reversionary.
+                            {!useMonteCarlo && !useHistoricalMonteCarlo && (
+                              <span className="block mt-1 font-medium text-purple-800">
+                                💡 Use Monte Carlo scenarios to see the full range of possible outcomes.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <ResponsiveContainer width="100%" height={250}>
                     <ComposedChart data={pensionChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -2547,6 +2569,21 @@ const RetirementCalculator = () => {
               </div>
             )}
 
+            {/* Partner Mortality Active Banner */}
+            {includePartnerMortality && pensionRecipientType === 'couple' && (
+              <div className="bg-purple-50 border-l-4 border-purple-500 p-3 mb-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-purple-800">💔 Partner Mortality Active:</span>
+                  <span className="text-gray-700">
+                    {' '}Probabilistic death based on {partnerGender} life tables (partner age {partnerAge}). 
+                    On death: spending → {(personAtHomeSpending * 100).toFixed(0)}% of couple, PSS/CSS → {(pensionReversionary * 100).toFixed(0)}% reversionary.
+                    {!useMonteCarlo && !useHistoricalMonteCarlo && 
+                      ' ⚠️ Charts show ONE possible outcome - death age varies. Use Monte Carlo to see full risk distribution.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Explanatory Banner for Monte Carlo */}
             {useMonteCarlo && monteCarloResults && (
               <div className="bg-green-50 border-l-4 border-green-500 p-3 mb-4">
@@ -2652,7 +2689,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v13.0
+          Australian Retirement Planning Tool v13.1
         </div>
       </div>
     </div>
