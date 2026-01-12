@@ -70,6 +70,24 @@ const RetirementCalculator = () => {
   const [currentAge, setCurrentAge] = useState(55);
   const [retirementAge, setRetirementAge] = useState(60);
   const [pensionRecipientType, setPensionRecipientType] = useState<'single' | 'couple'>('couple');
+  
+  // Aged Care Configuration
+  const [includeAgedCare, setIncludeAgedCare] = useState(false);
+  const [agedCareApproach, setAgedCareApproach] = useState<'probabilistic' | 'deterministic'>('probabilistic');
+  const [agedCareRAD, setAgedCareRAD] = useState(400000); // Refundable Accommodation Deposit
+  const [agedCareAnnualCost, setAgedCareAnnualCost] = useState(65000); // Basic + means-tested fees
+  const [deterministicAgedCareAge, setDeterministicAgedCareAge] = useState(85);
+  const [agedCareDuration, setAgedCareDuration] = useState(3); // Average stay duration
+  
+  // Partner configuration for aged care
+  const [partnerAge, setPartnerAge] = useState(55); // Simone's age
+  const [includePartnerAgedCare, setIncludePartnerAgedCare] = useState(true);
+  
+  // Partner Mortality Modeling
+  const [includePartnerMortality, setIncludePartnerMortality] = useState(false);
+  const [partnerGender, setPartnerGender] = useState<'male' | 'female'>('female');
+  const [singleSpendingRatio, setSingleSpendingRatio] = useState(0.70); // Single needs 70% of couple spending
+  const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
@@ -279,6 +297,112 @@ const RetirementCalculator = () => {
     return balance * rate;
   };
 
+  // Calculate probability of needing aged care by age
+  // Based on Australian data: ~30% of people use residential aged care
+  // Risk increases sharply after 80
+  const getAgedCareProbability = (age: number) => {
+    if (age < 75) return 0.02; // 2% cumulative by 75
+    if (age < 80) return 0.05; // 5% by 80
+    if (age < 85) return 0.15; // 15% by 85
+    if (age < 90) return 0.30; // 30% by 90
+    if (age < 95) return 0.45; // 45% by 95
+    return 0.55; // 55% by 100
+  };
+
+  // Calculate aged care costs for a given year
+  // Returns: { radRequired, annualCost, inAgedCare }
+  const getAgedCareCosts = (
+    age: number, 
+    year: number, 
+    cpiRate: number,
+    randomValue: number, // For probabilistic approach
+    currentlyInCare: boolean,
+    yearsInCare: number
+  ) => {
+    if (!includeAgedCare) return { radRequired: 0, annualCost: 0, inAgedCare: false, yearsInCare: 0 };
+
+    let inAgedCare = currentlyInCare;
+    let newYearsInCare = yearsInCare;
+
+    if (agedCareApproach === 'deterministic') {
+      // Simple: enter at specified age, stay for specified duration
+      if (age >= deterministicAgedCareAge && age < deterministicAgedCareAge + agedCareDuration) {
+        inAgedCare = true;
+        newYearsInCare = age - deterministicAgedCareAge + 1;
+      }
+    } else {
+      // Probabilistic: use age-based probability and random value
+      if (!currentlyInCare) {
+        const probability = getAgedCareProbability(age);
+        // Check if this is the year they enter care
+        // Use cumulative approach: if random value < probability for this age band
+        if (randomValue < probability / 100) { // Convert probability to 0-1 range
+          inAgedCare = true;
+          newYearsInCare = 1;
+        }
+      } else {
+        // Already in care, continue until duration expires
+        newYearsInCare = yearsInCare + 1;
+        if (newYearsInCare <= agedCareDuration) {
+          inAgedCare = true;
+        } else {
+          // Exited care (or died)
+          inAgedCare = false;
+          newYearsInCare = 0;
+        }
+      }
+    }
+
+    if (!inAgedCare) {
+      return { radRequired: 0, annualCost: 0, inAgedCare: false, yearsInCare: newYearsInCare };
+    }
+
+    // RAD is required in first year of care
+    const inflationAdjustedRAD = newYearsInCare === 1 
+      ? agedCareRAD * Math.pow(1 + cpiRate / 100, year - 1)
+      : 0;
+
+    // Annual costs increase with CPI
+    const inflationAdjustedAnnualCost = agedCareAnnualCost * Math.pow(1 + cpiRate / 100, year - 1);
+
+    return {
+      radRequired: inflationAdjustedRAD,
+      annualCost: inflationAdjustedAnnualCost,
+      inAgedCare: true,
+      yearsInCare: newYearsInCare
+    };
+  };
+
+  // Australian mortality probabilities (probability of death in next year)
+  // Based on ABS Life Tables 2020-2022
+  const getMortalityProbability = (age: number, gender: 'male' | 'female') => {
+    // Simplified Australian life table data
+    const maleMortality: { [key: number]: number } = {
+      55: 0.0033, 60: 0.0055, 65: 0.0095, 70: 0.0157, 75: 0.0266,
+      80: 0.0468, 85: 0.0816, 90: 0.1418, 95: 0.2347, 100: 0.35
+    };
+    
+    const femaleMortality: { [key: number]: number } = {
+      55: 0.0020, 60: 0.0031, 65: 0.0052, 70: 0.0091, 75: 0.0160,
+      80: 0.0293, 85: 0.0557, 90: 0.1086, 95: 0.1960, 100: 0.32
+    };
+    
+    const table = gender === 'male' ? maleMortality : femaleMortality;
+    
+    // Find appropriate probability
+    if (age < 55) return 0.001; // Very low before 55
+    if (age >= 100) return table[100];
+    
+    // Find bracket
+    const brackets = [55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+    let lowerBracket = 55;
+    for (const bracket of brackets) {
+      if (age >= bracket) lowerBracket = bracket;
+    }
+    
+    return table[lowerBracket];
+  };
+
   const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
@@ -289,6 +413,12 @@ const RetirementCalculator = () => {
     let currentSpendingBase = baseSpending;
     const initialWithdrawalRate = baseSpending / initialPortfolio;
     const yearsToRun = maxYears || 35;
+    
+    // Aged care state tracking
+    let inAgedCare = false;
+    let yearsInAgedCare = 0;
+    let radPaid = 0; // Track if RAD has been paid (refundable on exit)
+    const agedCareRandomValue = Math.random(); // Single random value for probabilistic aged care
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -348,6 +478,29 @@ const RetirementCalculator = () => {
       if (healthShock && year >= 15) {
         additionalCosts = 30000;
       }
+      
+      // Aged care costs
+      const agedCareCosts = getAgedCareCosts(age, year, cpiRate, agedCareRandomValue, inAgedCare, yearsInAgedCare);
+      inAgedCare = agedCareCosts.inAgedCare;
+      yearsInAgedCare = agedCareCosts.yearsInCare;
+      
+      // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
+      let radWithdrawn = 0;
+      if (agedCareCosts.radRequired > 0) {
+        radWithdrawn = agedCareCosts.radRequired;
+        // RAD comes from super - will be refunded when exiting care
+        radPaid = radWithdrawn;
+      }
+      
+      // When exiting aged care, RAD is refunded
+      let radRefund = 0;
+      if (radPaid > 0 && !inAgedCare) {
+        radRefund = radPaid;
+        radPaid = 0; // Reset after refund
+      }
+      
+      // Annual aged care fees (not refundable)
+      additionalCosts += agedCareCosts.annualCost;
       
       // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
@@ -436,6 +589,23 @@ const RetirementCalculator = () => {
       // Total withdrawn from super = minimum drawdown + any additional for spending
       const totalSuperWithdrawn = superDrawnForMinimum + Math.max(0, netSpendingNeed - (withdrawn - Math.max(0, netSpendingNeed - cashAccount - seqBuffer)));
 
+      // STEP 3: RAD PAYMENT (if entering aged care)
+      // RAD comes from main super and is held separately (will be refunded on exit)
+      if (radWithdrawn > 0 && mainSuper >= radWithdrawn) {
+        mainSuper -= radWithdrawn;
+      } else if (radWithdrawn > 0 && mainSuper < radWithdrawn) {
+        // Not enough in super for RAD - would need to access other assets
+        // For now, just take what's available
+        radWithdrawn = mainSuper;
+        mainSuper = 0;
+      }
+      
+      // STEP 4: RAD REFUND (if exiting aged care)
+      // RAD is refunded to main super when exiting care
+      if (radRefund > 0) {
+        mainSuper += radRefund;
+      }
+
       // APPLY RETURNS:
       // Main Super: Variable returns based on scenario/historical/Monte Carlo
       // Buffer & Cash: Fixed 3% real return (defensive assets)
@@ -449,7 +619,8 @@ const RetirementCalculator = () => {
         year, age, mainSuper, seqBuffer, cashAccount, totalBalance,
         spending: totalSpending, income: totalIncome, agePension, pensionIncome: indexedPensionIncome,
         withdrawn, minDrawdown, superDrawnForMinimum,
-        yearReturn, cpiRate, guardrailStatus, currentSpendingBase
+        yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
+        inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund
       });
 
       if (totalBalance <= 0) break;
@@ -861,7 +1032,8 @@ const RetirementCalculator = () => {
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
-      currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults]);
+      currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
+      includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -983,7 +1155,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 10.1 - Complete Retirement Modeling</p>
+            <p className="text-gray-600">Version 11.1 - Aged Care with Scenario Guidance</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1454,6 +1626,163 @@ const RetirementCalculator = () => {
         </div>
 
         <div className="bg-white border p-4 rounded mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">
+              Aged Care Costs
+              <InfoTooltip text="Model residential aged care costs including RAD (Refundable Accommodation Deposit) and ongoing fees. Australian data shows ~30% of retirees use residential aged care." />
+            </h2>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={includeAgedCare} 
+                onChange={(e) => setIncludeAgedCare(e.target.checked)} 
+                className="mr-2" 
+              />
+              <span className="text-sm font-medium">Include Aged Care</span>
+            </label>
+          </div>
+          
+          {includeAgedCare && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Modeling Approach</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center">
+                    <input 
+                      type="radio" 
+                      checked={agedCareApproach === 'deterministic'} 
+                      onChange={() => setAgedCareApproach('deterministic')} 
+                      className="mr-2" 
+                    />
+                    <span className="text-sm">Deterministic (specify age)</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input 
+                      type="radio" 
+                      checked={agedCareApproach === 'probabilistic'} 
+                      onChange={() => setAgedCareApproach('probabilistic')} 
+                      className="mr-2" 
+                    />
+                    <span className="text-sm">Probabilistic (age-based risk)</span>
+                  </label>
+                </div>
+                
+                {agedCareApproach === 'deterministic' ? (
+                  <div className="mt-2 p-3 bg-blue-50 border-l-4 border-blue-500">
+                    <p className="text-xs text-gray-700">
+                      <strong>Deterministic approach:</strong> Works with ALL scenarios (Constant Return, Historical, Monte Carlo, Formal Tests). 
+                      You specify exactly when aged care starts and for how long. Good for stress testing specific scenarios.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-2 p-3 bg-amber-50 border-l-4 border-amber-500">
+                    <p className="text-xs text-gray-700">
+                      <strong>⚠️ Probabilistic approach requires Monte Carlo:</strong> Each simulation uses a random value to determine 
+                      if/when aged care is triggered based on age probabilities. Use Monte Carlo or Historical Monte Carlo scenarios to see 
+                      the range of outcomes. In other scenarios (Constant Return, Historical, Formal Tests), one random outcome will be selected.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {agedCareApproach === 'deterministic' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Enter Aged Care at Age</label>
+                    <input 
+                      type="number" 
+                      value={deterministicAgedCareAge} 
+                      onChange={(e) => setDeterministicAgedCareAge(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      min="70"
+                      max="100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Duration (years)</label>
+                    <input 
+                      type="number" 
+                      value={agedCareDuration} 
+                      onChange={(e) => setAgedCareDuration(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      min="1"
+                      max="10"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {agedCareApproach === 'probabilistic' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Average Stay Duration: {agedCareDuration} years</label>
+                  <input 
+                    type="range" 
+                    min="1" 
+                    max="10" 
+                    value={agedCareDuration} 
+                    onChange={(e) => setAgedCareDuration(Number(e.target.value))} 
+                    className="w-full" 
+                  />
+                  <p className="text-xs text-gray-600">Australian average is ~3 years</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    RAD (Refundable Accommodation Deposit)
+                    <InfoTooltip text="Lump sum paid on entry, refunded on exit. Typical range $300k-$600k. Can be paid as daily fee instead." />
+                  </label>
+                  <input 
+                    type="number" 
+                    value={agedCareRAD} 
+                    onChange={(e) => setAgedCareRAD(Number(e.target.value))} 
+                    className="w-full p-2 border rounded"
+                    step="50000"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">Withdrawn from super, refunded on exit</p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Annual Ongoing Costs
+                    <InfoTooltip text="Basic daily fee (~$22k/year) + means-tested care fee. Total typically $50k-$80k/year." />
+                  </label>
+                  <input 
+                    type="number" 
+                    value={agedCareAnnualCost} 
+                    onChange={(e) => setAgedCareAnnualCost(Number(e.target.value))} 
+                    className="w-full p-2 border rounded"
+                    step="5000"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">Not refundable, indexed to CPI</p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                <div className="font-semibold text-gray-900 mb-2">Estimated Total Costs</div>
+                <div className="text-sm space-y-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><strong>RAD (refundable):</strong></div>
+                    <div className="text-right">{formatCurrency(agedCareRAD)}</div>
+                    
+                    <div><strong>Annual ongoing:</strong></div>
+                    <div className="text-right">{formatCurrency(agedCareAnnualCost)}</div>
+                    
+                    <div><strong>{agedCareDuration}-year total cost:</strong></div>
+                    <div className="text-right font-semibold">{formatCurrency(agedCareAnnualCost * agedCareDuration)}</div>
+                  </div>
+                  <div className="text-xs text-gray-600 mt-3 italic border-t pt-2">
+                    Note: RAD is refunded when exiting care. Only ongoing costs reduce your portfolio permanently.
+                    {pensionRecipientType === 'couple' && ' For couples, model each partner separately if needed.'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
             Dynamic Spending Guardrails
             <InfoTooltip text="Guyton-Klinger method: adjusts spending up/down based on portfolio performance to sustain withdrawals longer." />
@@ -1903,6 +2232,23 @@ const RetirementCalculator = () => {
 
         {chartData.length > 0 && (
           <div>
+            {/* Aged Care Active Banner */}
+            {includeAgedCare && (
+              <div className="bg-purple-50 border-l-4 border-purple-500 p-3 mb-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-purple-800">🏥 Aged Care Modeling Active:</span>
+                  <span className="text-gray-700">
+                    {' '}{agedCareApproach === 'deterministic' 
+                      ? `Deterministic - Entry at age ${deterministicAgedCareAge} for ${agedCareDuration} years` 
+                      : `Probabilistic - Age-based risk with average ${agedCareDuration}-year duration`}. 
+                    RAD: {formatCurrency(agedCareRAD)} (refundable), Annual: {formatCurrency(agedCareAnnualCost)}.
+                    {agedCareApproach === 'probabilistic' && !useMonteCarlo && !useHistoricalMonteCarlo && 
+                      ' ⚠️ Note: Probabilistic mode shows one random outcome - use Monte Carlo to see range of possibilities.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Explanatory Banner for Monte Carlo */}
             {useMonteCarlo && monteCarloResults && (
               <div className="bg-green-50 border-l-4 border-green-500 p-3 mb-4">
@@ -2008,7 +2354,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v10.1
+          Australian Retirement Planning Tool v11.1
         </div>
       </div>
     </div>
