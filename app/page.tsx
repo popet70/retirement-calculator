@@ -476,13 +476,18 @@ const RetirementCalculator = () => {
         // Compare withdrawal rates in REAL terms
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
         
-        // Calculate total planned spending for this year (base + splurge if applicable)
+        // Calculate total planned spending for this year (base + splurge + aged care if applicable)
         let totalPlannedSpending = currentSpendingBase;
         if (splurgeAmount > 0) {
           const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
           if (age >= splurgeStartAge && age <= splurgeEndAge) {
             totalPlannedSpending += splurgeAmount;
           }
+        }
+        // Include aged care annual costs in guardrail calculation (in real terms)
+        if (agedCareCosts.annualCost > 0) {
+          const realAgedCareCost = agedCareCosts.annualCost / Math.pow(1 + cpiRate / 100, year - 1);
+          totalPlannedSpending += realAgedCareCost;
         }
         
         const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
@@ -1243,7 +1248,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.3 - Aged Care Bug Fixes</p>
+            <p className="text-gray-600">Version 12.4 - Guardrails See Aged Care Costs</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2506,7 +2511,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.3
+          Australian Retirement Planning Tool v12.4
         </div>
       </div>
     </div>
