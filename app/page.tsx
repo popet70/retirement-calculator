@@ -70,12 +70,6 @@ const RetirementCalculator = () => {
   const [currentAge, setCurrentAge] = useState(55);
   const [retirementAge, setRetirementAge] = useState(60);
   const [pensionRecipientType, setPensionRecipientType] = useState<'single' | 'couple'>('couple');
-  
-  // Medical Cost Configuration
-  const [includeMedicalCosts, setIncludeMedicalCosts] = useState(false);
-  const [medicalCostProfile, setMedicalCostProfile] = useState<'conservative' | 'moderate' | 'elevated'>('moderate');
-  const [hasPrivateHealth, setHasPrivateHealth] = useState(true);
-  const [medicalInflation, setMedicalInflation] = useState(1.5); // Medical inflation above CPI
 
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
@@ -272,46 +266,6 @@ const RetirementCalculator = () => {
     }
   };
 
-  // Calculate age-appropriate medical costs based on Australian healthcare data
-  const getMedicalCosts = (age: number, year: number, cpiRate: number) => {
-    if (!includeMedicalCosts) return 0;
-    
-    // Base annual costs by age band (in real 2026 dollars)
-    // These represent out-of-pocket costs for a couple
-    const baseCosts = {
-      conservative: {
-        60: 2500, 65: 3500, 70: 5000, 75: 7500, 80: 10000, 85: 15000, 90: 20000
-      },
-      moderate: {
-        60: 4000, 65: 5500, 70: 8000, 75: 12000, 80: 16000, 85: 22000, 90: 28000
-      },
-      elevated: {
-        60: 6000, 65: 8000, 70: 12000, 75: 18000, 80: 24000, 85: 32000, 90: 40000
-      }
-    };
-    
-    const profile = baseCosts[medicalCostProfile];
-    
-    // Find appropriate base cost for age
-    let baseCost = profile[60];
-    if (age >= 90) baseCost = profile[90];
-    else if (age >= 85) baseCost = profile[85];
-    else if (age >= 80) baseCost = profile[80];
-    else if (age >= 75) baseCost = profile[75];
-    else if (age >= 70) baseCost = profile[70];
-    else if (age >= 65) baseCost = profile[65];
-    
-    // Private health insurance provides ~40% offset on out-of-pocket costs
-    const insuranceOffset = hasPrivateHealth ? 0.6 : 1.0;
-    
-    // Apply medical inflation (typically CPI + 1-2% for healthcare)
-    // Medical inflation compounds on top of CPI
-    const totalInflationRate = cpiRate + medicalInflation;
-    const inflatedCost = baseCost * Math.pow(1 + totalInflationRate / 100, year - 1);
-    
-    return inflatedCost * insuranceOffset;
-  };
-
   const getMinimumDrawdown = (age: number, balance: number) => {
     if (balance <= 0) return 0;
     let rate;
@@ -391,15 +345,9 @@ const RetirementCalculator = () => {
       
       // Additional costs not subject to guardrails
       let additionalCosts = 0;
-      
-      // Health shock (stress test only - from formal tests G1/H1)
       if (healthShock && year >= 15) {
-        additionalCosts += 30000;
+        additionalCosts = 30000;
       }
-      
-      // Medical costs (optional user configuration - applies to all scenarios)
-      const medicalCost = getMedicalCosts(age, year, cpiRate);
-      additionalCosts += medicalCost;
       
       // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
@@ -501,7 +449,7 @@ const RetirementCalculator = () => {
         year, age, mainSuper, seqBuffer, cashAccount, totalBalance,
         spending: totalSpending, income: totalIncome, agePension, pensionIncome: indexedPensionIncome,
         withdrawn, minDrawdown, superDrawnForMinimum,
-        yearReturn, cpiRate, guardrailStatus, currentSpendingBase, medicalCost
+        yearReturn, cpiRate, guardrailStatus, currentSpendingBase
       });
 
       if (totalBalance <= 0) break;
@@ -913,8 +861,7 @@ const RetirementCalculator = () => {
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
-      currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
-      includeMedicalCosts, medicalCostProfile, hasPrivateHealth, medicalInflation]);
+      currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -926,8 +873,7 @@ const RetirementCalculator = () => {
       'Buffer': toDisplayValue(r.seqBuffer, r.year, r.cpiRate),
       'Cash': toDisplayValue(r.cashAccount, r.year, r.cpiRate),
       'Spending': toDisplayValue(r.spending, r.year, r.cpiRate),
-      'Income': toDisplayValue(r.income, r.year, r.cpiRate),
-      'Medical Costs': toDisplayValue(r.medicalCost || 0, r.year, r.cpiRate)
+      'Income': toDisplayValue(r.income, r.year, r.cpiRate)
     }));
   }, [simulationResults, showNominalDollars]);
 
@@ -950,7 +896,7 @@ const RetirementCalculator = () => {
     // CSV Header
     let csv = 'Year,Age,Calendar Year,';
     csv += 'Main Super Start,Buffer Start,Cash Start,Total Start,';
-    csv += 'Base Spending,Spending Multiplier,Inflation Adjusted Spending,Splurge Addition,One-Off Expenses,Medical Costs,Health Shock (Stress Test),Total Spending,';
+    csv += 'Base Spending,Spending Multiplier,Inflation Adjusted Spending,Splurge Addition,One-Off Expenses,Health Costs,Total Spending,';
     csv += 'Pension Income,Age Pension,Total Income,';
     csv += 'Net Spending Need,Cash Used For Spending,Buffer Used For Spending,Super Used For Spending,Total Spent From Accounts,';
     csv += 'Minimum Drawdown Required,Super Drawn For Min Drawdown,Min Drawdown Excess Remaining in Cash,';
@@ -975,8 +921,7 @@ const RetirementCalculator = () => {
       const splurgeAddition = (splurgeAmount > 0 && r.age >= splurgeStartAge && r.age <= splurgeStartAge + splurgeDuration - 1) 
                               ? splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1) : 0;
       const oneOffTotal = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
-      const medicalCostsThisYear = r.medicalCost || 0;
-      const healthShockCosts = 0; // Would be 30000 if health shock enabled in formal test and year >= 15
+      const healthCosts = 0; // Would be 30000 if health shock enabled and year >= 15
 
       // Use stored values from simulation results
       const minDrawdownAmount = r.minDrawdown || 0;
@@ -1012,7 +957,7 @@ const RetirementCalculator = () => {
       // Format row
       csv += `${r.year},${r.age},${calendarYear},`;
       csv += `${prevMainSuper.toFixed(2)},${prevBuffer.toFixed(2)},${prevCash.toFixed(2)},${prevTotal.toFixed(2)},`;
-      csv += `${baseSpending.toFixed(2)},${spendingMultiplier.toFixed(4)},${inflationAdjustedSpending.toFixed(2)},${splurgeAddition.toFixed(2)},${oneOffTotal.toFixed(2)},${medicalCostsThisYear.toFixed(2)},${healthShockCosts.toFixed(2)},${r.spending.toFixed(2)},`;
+      csv += `${baseSpending.toFixed(2)},${spendingMultiplier.toFixed(4)},${inflationAdjustedSpending.toFixed(2)},${splurgeAddition.toFixed(2)},${oneOffTotal.toFixed(2)},${healthCosts.toFixed(2)},${r.spending.toFixed(2)},`;
       csv += `${(r.income - r.agePension).toFixed(2)},${r.agePension.toFixed(2)},${r.income.toFixed(2)},`;
       csv += `${netSpendingNeed.toFixed(2)},${cashUsed.toFixed(2)},${bufferUsed.toFixed(2)},${superUsedForSpending.toFixed(2)},${(cashUsed + bufferUsed + superUsedForSpending).toFixed(2)},`;
       csv += `${minDrawdownAmount.toFixed(2)},${superForMinimum.toFixed(2)},${excessToCash.toFixed(2)},`;
@@ -1038,7 +983,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 10.2 - Medical Costs Enhancement</p>
+            <p className="text-gray-600">Version 10.1 - Complete Retirement Modeling</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1509,139 +1454,6 @@ const RetirementCalculator = () => {
         </div>
 
         <div className="bg-white border p-4 rounded mb-6">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xl font-bold">
-              Medical & Healthcare Costs
-              <InfoTooltip text="Age-progressive medical expenses based on Australian healthcare data. Separate from the Health Shock stress test (G1/H1)." />
-            </h2>
-            <label className="flex items-center">
-              <input 
-                type="checkbox" 
-                checked={includeMedicalCosts} 
-                onChange={(e) => setIncludeMedicalCosts(e.target.checked)} 
-                className="mr-2" 
-              />
-              <span className="text-sm font-medium">Include Medical Costs</span>
-            </label>
-          </div>
-          
-          {includeMedicalCosts && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Cost Profile</label>
-                  <select 
-                    value={medicalCostProfile} 
-                    onChange={(e) => setMedicalCostProfile(e.target.value as 'conservative' | 'moderate' | 'elevated')}
-                    className="w-full p-2 border rounded"
-                  >
-                    <option value="conservative">Conservative (Lower costs)</option>
-                    <option value="moderate">Moderate (Typical costs)</option>
-                    <option value="elevated">Elevated (Higher costs)</option>
-                  </select>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {medicalCostProfile === 'conservative' && 'Minimal health issues, good genetics, preventive care'}
-                    {medicalCostProfile === 'moderate' && 'Average health trajectory, typical age-related issues'}
-                    {medicalCostProfile === 'elevated' && 'Complex health needs, chronic conditions, frequent care'}
-                  </p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">Private Health Insurance</label>
-                  <label className="flex items-center">
-                    <input 
-                      type="checkbox" 
-                      checked={hasPrivateHealth} 
-                      onChange={(e) => setHasPrivateHealth(e.target.checked)} 
-                      className="mr-2" 
-                    />
-                    <span className="text-sm">Maintain private health cover</span>
-                  </label>
-                  <p className="text-xs text-gray-600 mt-1">
-                    {hasPrivateHealth 
-                      ? '~40% reduction in out-of-pocket costs' 
-                      : 'Medicare only - higher out-of-pocket costs'}
-                  </p>
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2">Medical Inflation Above CPI: {medicalInflation.toFixed(1)}%</label>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="3" 
-                  step="0.5" 
-                  value={medicalInflation} 
-                  onChange={(e) => setMedicalInflation(Number(e.target.value))} 
-                  className="w-full" 
-                />
-                <p className="text-xs text-gray-600">Healthcare costs typically rise faster than general inflation</p>
-              </div>
-              
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                <div className="font-semibold text-gray-900 mb-2">Estimated Annual Costs ({pensionRecipientType === 'couple' ? 'Couple' : 'Single'})</div>
-                <div className="text-sm space-y-1">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><strong>Age 60-64:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 2500 : medicalCostProfile === 'moderate' ? 4000 : 6000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                    
-                    <div><strong>Age 65-69:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 3500 : medicalCostProfile === 'moderate' ? 5500 : 8000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                    
-                    <div><strong>Age 70-74:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 5000 : medicalCostProfile === 'moderate' ? 8000 : 12000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                    
-                    <div><strong>Age 75-79:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 7500 : medicalCostProfile === 'moderate' ? 12000 : 18000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                    
-                    <div><strong>Age 80-84:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 10000 : medicalCostProfile === 'moderate' ? 16000 : 24000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                    
-                    <div><strong>Age 85+:</strong></div>
-                    <div className="text-right">
-                      {formatCurrency(
-                        (medicalCostProfile === 'conservative' ? 15000 : medicalCostProfile === 'moderate' ? 22000 : 32000) * 
-                        (hasPrivateHealth ? 0.6 : 1.0)
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-600 mt-3 italic border-t pt-2">
-                    Costs shown in today's dollars. Medical inflation of {medicalInflation.toFixed(1)}% above CPI will be applied in projections.
-                    {pensionRecipientType === 'single' && ' Costs are for a couple - halve these for single person estimates.'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
             Dynamic Spending Guardrails
             <InfoTooltip text="Guyton-Klinger method: adjusts spending up/down based on portfolio performance to sustain withdrawals longer." />
@@ -2091,16 +1903,6 @@ const RetirementCalculator = () => {
 
         {chartData.length > 0 && (
           <div>
-            {/* Medical Costs Active Banner */}
-            {includeMedicalCosts && (
-              <div className="bg-orange-50 border-l-4 border-orange-500 p-3 mb-4">
-                <div className="text-sm">
-                  <span className="font-semibold text-orange-800">🏥 Medical Costs Active:</span>
-                  <span className="text-gray-700"> {medicalCostProfile.charAt(0).toUpperCase() + medicalCostProfile.slice(1)} profile with {hasPrivateHealth ? 'private health insurance' : 'Medicare only'}. Medical costs shown as orange dashed line on charts below.</span>
-                </div>
-              </div>
-            )}
-
             {/* Explanatory Banner for Monte Carlo */}
             {useMonteCarlo && monteCarloResults && (
               <div className="bg-green-50 border-l-4 border-green-500 p-3 mb-4">
@@ -2199,9 +2001,6 @@ const RetirementCalculator = () => {
                   <Legend />
                   <Line type="monotone" dataKey="Income" stroke="#10b981" strokeWidth={2} />
                   <Line type="monotone" dataKey="Spending" stroke="#ef4444" strokeWidth={2} />
-                  {includeMedicalCosts && (
-                    <Line type="monotone" dataKey="Medical Costs" stroke="#f97316" strokeWidth={2} strokeDasharray="5 5" />
-                  )}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -2209,7 +2008,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v10.2
+          Australian Retirement Planning Tool v10.1
         </div>
       </div>
     </div>
