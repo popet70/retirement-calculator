@@ -89,13 +89,6 @@ const RetirementCalculator = () => {
   const [singleSpendingRatio, setSingleSpendingRatio] = useState(0.70); // Single needs 70% of couple spending
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
-  // Auto-switch aged care to deterministic when leaving Monte Carlo scenarios
-  useEffect(() => {
-    if (includeAgedCare && agedCareApproach === 'probabilistic' && !useMonteCarlo && !useHistoricalMonteCarlo) {
-      setAgedCareApproach('deterministic');
-    }
-  }, [useMonteCarlo, useHistoricalMonteCarlo, includeAgedCare, agedCareApproach]);
-
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
     const currentYear = 2026;
@@ -185,6 +178,13 @@ const RetirementCalculator = () => {
   const [historicalMethod, setHistoricalMethod] = useState<'shuffle' | 'overlapping' | 'block'>('overlapping');
   const [blockSize, setBlockSize] = useState(5);
   const [historicalMonteCarloResults, setHistoricalMonteCarloResults] = useState<any>(null);
+
+  // Auto-switch aged care to deterministic when leaving Monte Carlo scenarios
+  useEffect(() => {
+    if (includeAgedCare && agedCareApproach === 'probabilistic' && !useMonteCarlo && !useHistoricalMonteCarlo) {
+      setAgedCareApproach('deterministic');
+    }
+  }, [useMonteCarlo, useHistoricalMonteCarlo, includeAgedCare, agedCareApproach]);
 
 
   const runFormalTests = () => {
