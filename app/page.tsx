@@ -436,6 +436,8 @@ const RetirementCalculator = () => {
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
     let spendingAdjustedForSingle = false; // Track if we've already adjusted to single
     let spendingBaseBeforeAgedCare = 0; // Save spending base before aged care for restoration on exit
+    const partnerMortalityRandomValue = Math.random(); // Single random value for probabilistic mortality
+    let cumulativeMortalityProbability = 0; // Track cumulative probability for death trigger
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -486,6 +488,27 @@ const RetirementCalculator = () => {
           currentSpendingBase = baseSpending; // Fallback to original couple level
         }
         spendingAdjustedForSingle = false;
+      }
+      
+      // PARTNER MORTALITY (independent of aged care)
+      // Check if partner dies this year (only if couple and partner still alive and not already in aged care death scenario)
+      if (includePartnerMortality && pensionRecipientType === 'couple' && partnerAlive && !inAgedCare) {
+        const partnerCurrentAge = partnerAge + year - 1;
+        const yearlyMortalityRate = getMortalityProbability(partnerCurrentAge, partnerGender);
+        
+        // Add this year's mortality to cumulative probability
+        cumulativeMortalityProbability += yearlyMortalityRate;
+        
+        // Check if partner dies this year using single random value
+        if (partnerMortalityRandomValue < cumulativeMortalityProbability) {
+          partnerAlive = false;
+          
+          // Transition to single spending if not already adjusted
+          if (!spendingAdjustedForSingle) {
+            currentSpendingBase = currentSpendingBase * personAtHomeSpending;
+            spendingAdjustedForSingle = true;
+          }
+        }
       }
       
       // GUARDRAILS (now uses correct spending base after aged care adjustment)
@@ -589,11 +612,19 @@ const RetirementCalculator = () => {
         : agePensionParams;
 
       const totalAssets = mainSuper + seqBuffer;
+      
+      // Adjust pension income if partner has died (reversionary benefit)
+      let adjustedPensionIncome = totalPensionIncome;
+      if (pensionRecipientType === 'couple' && !partnerAlive) {
+        // Apply reversionary percentage (typically 67% for PSS/CSS)
+        adjustedPensionIncome = totalPensionIncome * pensionReversionary;
+      }
+      
       const indexedMaxPension = currentPensionParams.maxPensionPerYear * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedThreshold = (isHomeowner ? currentPensionParams.assetTestThresholdHomeowner : currentPensionParams.assetTestThresholdNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedCutoff = (isHomeowner ? currentPensionParams.assetTestCutoffHomeowner : currentPensionParams.assetTestCutoffNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedTaper = currentPensionParams.assetTaperPerYear * Math.pow(1 + cpiRate / 100, year - 1);
-      const indexedPensionIncome = totalPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedPensionIncome = adjustedPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
       
       let agePension = 0;
       if (includeAgePension && age >= currentPensionParams.eligibilityAge) {
@@ -1142,7 +1173,8 @@ const RetirementCalculator = () => {
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
-      personAtHomeSpending, deathInCare]);
+      personAtHomeSpending, deathInCare, 
+      includePartnerMortality, partnerAge, partnerGender, pensionReversionary]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1266,7 +1298,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.5 - Fix Spending After Aged Care Exit</p>
+            <p className="text-gray-600">Version 13.0 - Partner Mortality Feature</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1957,6 +1989,97 @@ const RetirementCalculator = () => {
           )}
         </div>
 
+        {pensionRecipientType === 'couple' && (
+          <div className="bg-white border p-4 rounded mb-6">
+            <h2 className="text-xl font-bold mb-3">
+              Partner Mortality
+              <InfoTooltip text="Model the death of your partner at any age (not just in aged care). Automatically transitions to single spending and Age Pension rates." />
+            </h2>
+            <div className="flex items-center gap-4 mb-4">
+              <label className="flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={includePartnerMortality} 
+                  onChange={(e) => setIncludePartnerMortality(e.target.checked)} 
+                  className="mr-2" 
+                />
+                <span className="text-sm font-medium">Enable Partner Mortality</span>
+              </label>
+            </div>
+            
+            {includePartnerMortality && (
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-gray-700 mb-3">
+                    Uses Australian life tables to model probabilistic death of your partner. When partner dies:
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-1 ml-4">
+                    <li>• Spending transitions to single level ({(personAtHomeSpending * 100).toFixed(0)}% of couple)</li>
+                    <li>• Age Pension switches to single rate</li>
+                    <li>• PSS/CSS pension reduced to reversionary amount ({(pensionReversionary * 100).toFixed(0)}%)</li>
+                  </ul>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Partner's Current Age
+                      <InfoTooltip text="Your partner's age at retirement start. Used to calculate age-based mortality probabilities." />
+                    </label>
+                    <input 
+                      type="number" 
+                      value={partnerAge} 
+                      onChange={(e) => setPartnerAge(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      min="50"
+                      max="70"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Partner's Gender
+                      <InfoTooltip text="Affects mortality probabilities based on Australian life tables. Females have lower mortality rates." />
+                    </label>
+                    <select 
+                      value={partnerGender} 
+                      onChange={(e) => setPartnerGender(e.target.value as 'male' | 'female')} 
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    PSS/CSS Reversionary: {(pensionReversionary * 100).toFixed(0)}%
+                    <InfoTooltip text="Percentage of PSS/CSS pension that continues to surviving spouse. Typically 67% for most public service pensions." />
+                  </label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="1"
+                    value={pensionReversionary * 100} 
+                    onChange={(e) => setPensionReversionary(Number(e.target.value) / 100)} 
+                    className="w-full" 
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    If partner dies: ${formatCurrency(totalPensionIncome)} → ${formatCurrency(totalPensionIncome * pensionReversionary)}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                  <strong>Note:</strong> Partner mortality is probabilistic - requires Monte Carlo scenarios to see risk distribution. 
+                  In other scenarios, use aged care "death in care" option for deterministic death modeling.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
             Dynamic Spending Guardrails
@@ -2529,7 +2652,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.5
+          Australian Retirement Planning Tool v13.0
         </div>
       </div>
     </div>
