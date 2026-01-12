@@ -1705,7 +1705,7 @@ const RetirementCalculator = () => {
                         Probabilistic aged care modeling is only available with <strong>Monte Carlo</strong> or <strong>Historical Monte Carlo</strong> scenarios.
                       </p>
                       <p className="text-xs text-gray-600">
-                        To use probabilistic aged care: Go to "Test Scenarios" section above and select either "Monte Carlo" or "Historical MC".
+                        To use probabilistic aged care: Go to "Test Scenarios" section below and select either "Monte Carlo" or "Historical MC".
                       </p>
                     </div>
                   </>
