@@ -540,9 +540,6 @@ const RetirementCalculator = () => {
         radPaid = 0; // Reset after refund
       }
       
-      // Annual aged care fees (not refundable)
-      additionalCosts += agedCareCosts.annualCost;
-      
       // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
       oneOffExpenses.forEach(expense => {
@@ -1162,7 +1159,8 @@ const RetirementCalculator = () => {
     csv += 'Net Spending Need,Cash Used For Spending,Buffer Used For Spending,Super Used For Spending,Total Spent From Accounts,';
     csv += 'Minimum Drawdown Required,Super Drawn For Min Drawdown,Min Drawdown Excess Remaining in Cash,';
     csv += 'Return %,Main Super End,Buffer End,Cash End,Total End,';
-    csv += 'Guardrail Status,Current Spending Base\n';
+    csv += 'Guardrail Status,Current Spending Base,';
+    csv += 'In Aged Care,Aged Care Annual Cost,RAD Withdrawn,RAD Refund,Partner Alive\n';
 
     // Calculate detailed breakdown for each year
     simulationResults.forEach((r: any, index: number) => {
@@ -1223,7 +1221,8 @@ const RetirementCalculator = () => {
       csv += `${netSpendingNeed.toFixed(2)},${cashUsed.toFixed(2)},${bufferUsed.toFixed(2)},${superUsedForSpending.toFixed(2)},${(cashUsed + bufferUsed + superUsedForSpending).toFixed(2)},`;
       csv += `${minDrawdownAmount.toFixed(2)},${superForMinimum.toFixed(2)},${excessToCash.toFixed(2)},`;
       csv += `${r.yearReturn.toFixed(2)},${r.mainSuper.toFixed(2)},${r.seqBuffer.toFixed(2)},${r.cashAccount.toFixed(2)},${r.totalBalance.toFixed(2)},`;
-      csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)}\n`;
+      csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)},`;
+      csv += `${r.inAgedCare ? 'TRUE' : 'FALSE'},${(r.agedCareAnnualCost || 0).toFixed(2)},${(r.radWithdrawn || 0).toFixed(2)},${(r.radRefund || 0).toFixed(2)},${r.partnerAlive ? 'TRUE' : 'FALSE'}\n`;
     });
 
     // Download
@@ -1244,7 +1243,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
+            <p className="text-gray-600">Version 12.3 - Aged Care Bug Fixes</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2507,7 +2506,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.2
+          Australian Retirement Planning Tool v12.3
         </div>
       </div>
     </div>
