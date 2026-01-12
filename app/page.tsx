@@ -443,6 +443,34 @@ const RetirementCalculator = () => {
       // Store starting balances for minimum drawdown calculation
       const startingMainSuper = mainSuper;
       
+      // AGED CARE STATUS CHECK (must happen before guardrails)
+      // Determine if we're entering, in, or exiting aged care
+      const agedCareCosts = getAgedCareCosts(age, year, cpiRate, agedCareRandomValue, inAgedCare, yearsInAgedCare);
+      const wasInCare = inAgedCare;
+      inAgedCare = agedCareCosts.inAgedCare;
+      yearsInAgedCare = agedCareCosts.yearsInCare;
+      
+      // AGED CARE SPENDING ADJUSTMENT (must happen before guardrails)
+      // When person enters aged care, adjust base spending to "person at home alone" level
+      if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
+        currentSpendingBase = baseSpending * personAtHomeSpending;
+        spendingAdjustedForSingle = true; // Mark that we've adjusted
+      }
+      
+      // DEATH IN AGED CARE
+      // If person was in care and is now exiting, check if they died or recovered
+      if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
+        // Partner died in aged care - survivor continues at same spending level
+        partnerAlive = false;
+        // Spending already at correct single level (personAtHomeSpending %), no change needed
+        
+      } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
+        // Person recovered and exited care - restore couple spending
+        currentSpendingBase = baseSpending; // Restore to original couple level
+        spendingAdjustedForSingle = false;
+      }
+      
+      // GUARDRAILS (now uses correct spending base after aged care adjustment)
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
         // Compare withdrawal rates in REAL terms
@@ -495,33 +523,8 @@ const RetirementCalculator = () => {
         additionalCosts = 30000;
       }
       
-      // Aged care costs
-      const agedCareCosts = getAgedCareCosts(age, year, cpiRate, agedCareRandomValue, inAgedCare, yearsInAgedCare);
-      
-      // Check if entering, in, or exiting aged care
-      const wasInCare = inAgedCare;
-      inAgedCare = agedCareCosts.inAgedCare;
-      yearsInAgedCare = agedCareCosts.yearsInCare;
-      
-      // AGED CARE SPENDING ADJUSTMENT
-      // When person enters aged care, adjust base spending to "person at home alone" level
-      if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
-        currentSpendingBase = baseSpending * personAtHomeSpending;
-        spendingAdjustedForSingle = true; // Mark that we've adjusted
-      }
-      
-      // DEATH IN AGED CARE
-      // If person was in care and is now exiting, check if they died or recovered
-      if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
-        // Partner died in aged care - survivor continues at same spending level
-        partnerAlive = false;
-        // Spending already at correct single level (personAtHomeSpending %), no change needed
-        
-      } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
-        // Person recovered and exited care - restore couple spending
-        currentSpendingBase = baseSpending; // Restore to original couple level
-        spendingAdjustedForSingle = false;
-      }
+      // Annual aged care fees (not refundable, not subject to guardrails)
+      additionalCosts += agedCareCosts.annualCost;
       
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
       let radWithdrawn = 0;
@@ -1241,7 +1244,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.1 - Simplified Aged Care Spending Model</p>
+            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2504,7 +2507,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.1
+          Australian Retirement Planning Tool v12.2
         </div>
       </div>
     </div>
