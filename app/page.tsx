@@ -78,7 +78,7 @@ const RetirementCalculator = () => {
   const [agedCareAnnualCost, setAgedCareAnnualCost] = useState(65000); // Basic + means-tested fees
   const [deterministicAgedCareAge, setDeterministicAgedCareAge] = useState(85);
   const [agedCareDuration, setAgedCareDuration] = useState(3); // Average stay duration
-  const [spendingReductionInCare, setSpendingReductionInCare] = useState(0.45); // 45% reduction while in care
+  const [personAtHomeSpending, setPersonAtHomeSpending] = useState(0.70); // Person at home needs 70% of couple spending
   const [deathInCare, setDeathInCare] = useState(true); // Assume death in aged care (vs exit)
   
   // Partner configuration for aged care
@@ -88,7 +88,6 @@ const RetirementCalculator = () => {
   // Partner Mortality Modeling
   const [includePartnerMortality, setIncludePartnerMortality] = useState(false);
   const [partnerGender, setPartnerGender] = useState<'male' | 'female'>('female');
-  const [singleSpendingRatio, setSingleSpendingRatio] = useState(0.70); // Single needs 70% of couple spending
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
   // Calculate retirement year based on current age
@@ -505,27 +504,22 @@ const RetirementCalculator = () => {
       yearsInAgedCare = agedCareCosts.yearsInCare;
       
       // AGED CARE SPENDING ADJUSTMENT
-      // When person enters aged care, reduce base spending (their expenses now covered by aged care fee)
+      // When person enters aged care, adjust base spending to "person at home alone" level
       if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
-        currentSpendingBase = currentSpendingBase * (1 - spendingReductionInCare);
+        currentSpendingBase = baseSpending * personAtHomeSpending;
         spendingAdjustedForSingle = true; // Mark that we've adjusted
       }
       
       // DEATH IN AGED CARE
       // If person was in care and is now exiting, check if they died or recovered
       if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
-        // Partner died in aged care - transition to single survivor
+        // Partner died in aged care - survivor continues at same spending level
         partnerAlive = false;
+        // Spending already at correct single level (personAtHomeSpending %), no change needed
         
-        // Adjust spending to single person level (70% of original couple spending)
-        // Note: We already reduced by spendingReductionInCare, now adjust to permanent single level
-        const originalCoupleSpending = baseSpending; // Store original for reference
-        currentSpendingBase = originalCoupleSpending * singleSpendingRatio;
-        
-        // Keep spendingAdjustedForSingle = true so we don't adjust again
       } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
         // Person recovered and exited care - restore couple spending
-        currentSpendingBase = currentSpendingBase / (1 - spendingReductionInCare);
+        currentSpendingBase = baseSpending; // Restore to original couple level
         spendingAdjustedForSingle = false;
       }
       
@@ -1125,7 +1119,7 @@ const RetirementCalculator = () => {
       useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
-      spendingReductionInCare, deathInCare, singleSpendingRatio]);
+      personAtHomeSpending, deathInCare]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1247,7 +1241,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.0 - Aged Care Death & Single Survivor Transition</p>
+            <p className="text-gray-600">Version 12.1 - Simplified Aged Care Spending Model</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1873,25 +1867,25 @@ const RetirementCalculator = () => {
 
               {pensionRecipientType === 'couple' && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-                  <div className="font-semibold text-gray-900 mb-3">Couple-Specific Settings</div>
+                  <div className="font-semibold text-gray-900 mb-3">Couple Settings</div>
                   
                   <div className="space-y-3">
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Base spending reduction while in care: {(spendingReductionInCare * 100).toFixed(0)}%
-                        <InfoTooltip text="Person in aged care no longer needs their share of home expenses (covered by aged care fees). Typically 40-50% reduction." />
+                        Person at home needs: {(personAtHomeSpending * 100).toFixed(0)}% of couple spending
+                        <InfoTooltip text="When one partner is in aged care, the other lives alone at home. Typically needs 70% of couple budget due to fixed costs (rates, insurance, utilities). This same percentage applies after partner dies." />
                       </label>
                       <input 
                         type="range" 
-                        min="0" 
-                        max="60" 
+                        min="60" 
+                        max="80" 
                         step="5"
-                        value={spendingReductionInCare * 100} 
-                        onChange={(e) => setSpendingReductionInCare(Number(e.target.value) / 100)} 
+                        value={personAtHomeSpending * 100} 
+                        onChange={(e) => setPersonAtHomeSpending(Number(e.target.value) / 100)} 
                         className="w-full" 
                       />
                       <p className="text-xs text-gray-600 mt-1">
-                        Reduces base spending to avoid double-counting (home expenses + aged care fees)
+                        Couple: $120k → Person at home: ${(120000 * personAtHomeSpending / 1000).toFixed(0)}k while partner in care AND after partner dies
                       </p>
                     </div>
 
@@ -1906,29 +1900,11 @@ const RetirementCalculator = () => {
                       <label htmlFor="deathInCare" className="text-sm flex-1">
                         <span className="font-medium">Person dies in aged care (realistic default)</span>
                         <p className="text-xs text-gray-600 mt-1">
-                          When checked: Partner dies in care, spending transitions to single survivor level ({(singleSpendingRatio * 100).toFixed(0)}%), 
-                          Age Pension switches to single rate. When unchecked: Person recovers and returns home, couple spending resumes.
+                          ✓ Checked: Partner dies in care, spending stays at {(personAtHomeSpending * 100).toFixed(0)}%, Age Pension switches to single rate, RAD refunded to estate.<br/>
+                          ✗ Unchecked: Person recovers and returns home, couple spending resumes.
                         </p>
                       </label>
                     </div>
-
-                    {deathInCare && (
-                      <div>
-                        <label className="block text-sm font-medium mb-2">
-                          Single survivor spending: {(singleSpendingRatio * 100).toFixed(0)}% of couple spending
-                          <InfoTooltip text="After partner dies, surviving person typically needs 70% of couple spending (not 50%) due to fixed costs." />
-                        </label>
-                        <input 
-                          type="range" 
-                          min="60" 
-                          max="80" 
-                          step="5"
-                          value={singleSpendingRatio * 100} 
-                          onChange={(e) => setSingleSpendingRatio(Number(e.target.value) / 100)} 
-                          className="w-full" 
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -2528,7 +2504,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.0
+          Australian Retirement Planning Tool v12.1
         </div>
       </div>
     </div>
