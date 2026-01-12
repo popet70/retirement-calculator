@@ -1170,7 +1170,8 @@ const RetirementCalculator = () => {
     return runSimulation(returns, inflationRate, false, 35);
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
-      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
+      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, useHistoricalMonteCarlo, historicalMonteCarloResults,
+      splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
       personAtHomeSpending, deathInCare, 
@@ -1298,7 +1299,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 13.1 - Partner Mortality Warning Banners</p>
+            <p className="text-gray-600">Version 13.2 - Fix Historical Monte Carlo Charts</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2689,7 +2690,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v13.1
+          Australian Retirement Planning Tool v13.2
         </div>
       </div>
     </div>
