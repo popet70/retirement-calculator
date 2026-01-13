@@ -35,6 +35,7 @@ const RetirementCalculator = () => {
   const [lowerGuardrail, setLowerGuardrail] = useState(15);
   const [guardrailAdjustment, setGuardrailAdjustment] = useState(10);
   const [showNominalDollars, setShowNominalDollars] = useState(false);
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [inflationRate, setInflationRate] = useState(2.5);
   const [useHistoricalData, setUseHistoricalData] = useState(false);
   const [useMonteCarlo, setUseMonteCarlo] = useState(false);
@@ -89,6 +90,10 @@ const RetirementCalculator = () => {
   const [includePartnerMortality, setIncludePartnerMortality] = useState(false);
   const [partnerGender, setPartnerGender] = useState<'male' | 'female'>('female');
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
+
+  // Debt Repayment at Retirement
+  const [includeDebt, setIncludeDebt] = useState(false);
+  const [debts, setDebts] = useState<Array<{name: string, amount: number, interestRate: number, repaymentYears: number, extraPayment: number}>>([]);
 
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
@@ -415,6 +420,24 @@ const RetirementCalculator = () => {
     return table[lowerBracket];
   };
 
+  // Calculate minimum annual payment for amortized loan
+  const calculateMinimumDebtPayment = (principal: number, annualRate: number, years: number): number => {
+    if (principal <= 0 || years <= 0) return 0;
+    const monthlyRate = annualRate / 100 / 12;
+    const numPayments = years * 12;
+    
+    if (monthlyRate === 0) {
+      // No interest - simple division
+      return principal / years;
+    }
+    
+    // Standard amortization formula: P * [r(1+r)^n] / [(1+r)^n - 1]
+    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / 
+                           (Math.pow(1 + monthlyRate, numPayments) - 1);
+    
+    return monthlyPayment * 12; // Annual payment
+  };
+
   const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
@@ -432,9 +455,22 @@ const RetirementCalculator = () => {
     let radPaid = 0; // Track if RAD has been paid (refundable on exit)
     const agedCareRandomValue = Math.random(); // Single random value for probabilistic aged care
     
+    // Debt repayment tracking - array of debts with balances
+    const debtBalances = includeDebt ? debts.map(d => ({
+      name: d.name,
+      balance: d.amount,
+      interestRate: d.interestRate,
+      repaymentYears: d.repaymentYears,
+      extraPayment: d.extraPayment,
+      minimumPayment: calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears)
+    })) : [];
+    
     // Partner survival tracking (for aged care death scenario)
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
     let spendingAdjustedForSingle = false; // Track if we've already adjusted to single
+    let spendingBaseBeforeAgedCare = 0; // Save spending base before aged care for restoration on exit
+    const partnerMortalityRandomValue = Math.random(); // Single random value for probabilistic mortality
+    let cumulativeMortalityProbability = 0; // Track cumulative probability for death trigger
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -453,6 +489,9 @@ const RetirementCalculator = () => {
       // AGED CARE SPENDING ADJUSTMENT (must happen before guardrails)
       // When person enters aged care, adjust base spending to "person at home alone" level
       if (inAgedCare && !spendingAdjustedForSingle && pensionRecipientType === 'couple') {
+        // Save the current spending base before aged care adjustment (includes any prior guardrail changes)
+        spendingBaseBeforeAgedCare = currentSpendingBase;
+        // Adjust to person at home level
         currentSpendingBase = baseSpending * personAtHomeSpending;
         spendingAdjustedForSingle = true; // Mark that we've adjusted
       }
@@ -460,14 +499,49 @@ const RetirementCalculator = () => {
       // DEATH IN AGED CARE
       // If person was in care and is now exiting, check if they died or recovered
       if (wasInCare && !inAgedCare && deathInCare && partnerAlive && pensionRecipientType === 'couple') {
-        // Partner died in aged care - survivor continues at same spending level
+        // Partner died in aged care - survivor continues at appropriate spending level
         partnerAlive = false;
-        // Spending already at correct single level (personAtHomeSpending %), no change needed
+        
+        // Restore to the spending base from before aged care entered
+        // This preserves any legitimate guardrail adjustments from years 1-24
+        // while removing the aged care-specific cuts from years 25-29
+        if (spendingBaseBeforeAgedCare > 0) {
+          // Apply the single spending ratio to the pre-aged-care base
+          currentSpendingBase = spendingBaseBeforeAgedCare * personAtHomeSpending;
+        } else {
+          // Fallback if somehow not saved (shouldn't happen)
+          currentSpendingBase = baseSpending * personAtHomeSpending;
+        }
         
       } else if (wasInCare && !inAgedCare && !deathInCare && spendingAdjustedForSingle) {
         // Person recovered and exited care - restore couple spending
-        currentSpendingBase = baseSpending; // Restore to original couple level
+        if (spendingBaseBeforeAgedCare > 0) {
+          currentSpendingBase = spendingBaseBeforeAgedCare; // Restore to pre-aged-care level
+        } else {
+          currentSpendingBase = baseSpending; // Fallback to original couple level
+        }
         spendingAdjustedForSingle = false;
+      }
+      
+      // PARTNER MORTALITY (independent of aged care)
+      // Check if partner dies this year (only if couple and partner still alive and not already in aged care death scenario)
+      if (includePartnerMortality && pensionRecipientType === 'couple' && partnerAlive && !inAgedCare) {
+        const partnerCurrentAge = partnerAge + year - 1;
+        const yearlyMortalityRate = getMortalityProbability(partnerCurrentAge, partnerGender);
+        
+        // Add this year's mortality to cumulative probability
+        cumulativeMortalityProbability += yearlyMortalityRate;
+        
+        // Check if partner dies this year using single random value
+        if (partnerMortalityRandomValue < cumulativeMortalityProbability) {
+          partnerAlive = false;
+          
+          // Transition to single spending if not already adjusted
+          if (!spendingAdjustedForSingle) {
+            currentSpendingBase = currentSpendingBase * personAtHomeSpending;
+            spendingAdjustedForSingle = true;
+          }
+        }
       }
       
       // GUARDRAILS (now uses correct spending base after aged care adjustment)
@@ -476,13 +550,18 @@ const RetirementCalculator = () => {
         // Compare withdrawal rates in REAL terms
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
         
-        // Calculate total planned spending for this year (base + splurge if applicable)
+        // Calculate total planned spending for this year (base + splurge + aged care if applicable)
         let totalPlannedSpending = currentSpendingBase;
         if (splurgeAmount > 0) {
           const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
           if (age >= splurgeStartAge && age <= splurgeEndAge) {
             totalPlannedSpending += splurgeAmount;
           }
+        }
+        // Include aged care annual costs in guardrail calculation (in real terms)
+        if (agedCareCosts.annualCost > 0) {
+          const realAgedCareCost = agedCareCosts.annualCost / Math.pow(1 + cpiRate / 100, year - 1);
+          totalPlannedSpending += realAgedCareCost;
         }
         
         const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
@@ -496,40 +575,17 @@ const RetirementCalculator = () => {
     guardrailStatus = 'decrease';
     const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
     const spendingMultiplier = getSpendingMultiplier(year);
-    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
+    // Floor includes both PSS/CSS pension AND Age Pension to prevent spending dropping below total guaranteed income
+    const maxAgePension = (pensionRecipientType === 'couple' && !partnerAlive) 
+      ? 29754  // Single rate if partner died
+      : agePensionParams.maxPensionPerYear;  // Couple or single rate
+    const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
+      ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
+      : totalPensionIncome;
+    const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
     currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
   }
 }
-      
-      // DEBUG LOGGING - REMOVE AFTER FIXING
-      if (year <= 5) {
-        console.log(`=== YEAR ${year} (Age ${age}) ===`);
-        console.log(`Guardrail Status: ${guardrailStatus}`);
-        console.log(`currentSpendingBase: ${currentSpendingBase.toFixed(2)}`);
-        if (useGuardrails && year > 1) {
-          const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-          const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
-          
-          // Recalculate for logging (variables are out of scope)
-          let totalPlannedSpending = currentSpendingBase;
-          if (splurgeAmount > 0) {
-            const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-            if (age >= splurgeStartAge && age <= splurgeEndAge) {
-              totalPlannedSpending += splurgeAmount;
-            }
-          }
-          
-          const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
-          const withdrawalRateRatio = initialWithdrawalRate > 0 ? (currentWithdrawalRate / initialWithdrawalRate) * 100 : 100;
-          
-          console.log(`Real Portfolio: ${realPortfolio.toFixed(2)}`);
-          console.log(`Total Planned Spending: ${totalPlannedSpending.toFixed(2)}`);
-          console.log(`Current WD Rate: ${(currentWithdrawalRate * 100).toFixed(4)}%`);
-          console.log(`Initial WD Rate: ${(initialWithdrawalRate * 100).toFixed(4)}%`);
-          console.log(`Ratio: ${withdrawalRateRatio.toFixed(2)}%`);
-        }
-        console.log('');
-      }
       
       const spendingMultiplier = getSpendingMultiplier(year);
       
@@ -556,6 +612,42 @@ const RetirementCalculator = () => {
       // Annual aged care fees (not refundable, not subject to guardrails)
       additionalCosts += agedCareCosts.annualCost;
       
+      // Debt repayment (not subject to guardrails - unavoidable commitment)
+      let totalDebtPayment = 0;
+      let totalDebtInterest = 0;
+      let totalDebtPrincipal = 0;
+      let totalDebtBalance = 0;
+      
+      if (includeDebt && debtBalances.length > 0) {
+        debtBalances.forEach(debt => {
+          if (debt.balance > 0) {
+            // Calculate interest for the year
+            const interestPaid = debt.balance * (debt.interestRate / 100);
+            
+            // Total payment = minimum + extra
+            const payment = debt.minimumPayment + debt.extraPayment;
+            
+            // Cap payment at outstanding balance + interest (can't overpay)
+            const actualPayment = Math.min(payment, debt.balance + interestPaid);
+            
+            // Calculate principal paid
+            const principalPaid = actualPayment - interestPaid;
+            
+            // Update debt balance
+            debt.balance = Math.max(0, debt.balance + interestPaid - actualPayment);
+            
+            // Accumulate totals
+            totalDebtPayment += actualPayment;
+            totalDebtInterest += interestPaid;
+            totalDebtPrincipal += principalPaid;
+            totalDebtBalance += debt.balance;
+          }
+        });
+        
+        // Add total debt payments to additional costs
+        additionalCosts += totalDebtPayment;
+      }
+      
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
       let radWithdrawn = 0;
       if (agedCareCosts.radRequired > 0) {
@@ -569,9 +661,6 @@ const RetirementCalculator = () => {
         radRefund = radPaid;
         radPaid = 0; // Reset after refund
       }
-      
-      // Annual aged care fees (not refundable)
-      additionalCosts += agedCareCosts.annualCost;
       
       // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
@@ -599,11 +688,19 @@ const RetirementCalculator = () => {
         : agePensionParams;
 
       const totalAssets = mainSuper + seqBuffer;
+      
+      // Adjust pension income if partner has died (reversionary benefit)
+      let adjustedPensionIncome = totalPensionIncome;
+      if (pensionRecipientType === 'couple' && !partnerAlive) {
+        // Apply reversionary percentage (typically 67% for PSS/CSS)
+        adjustedPensionIncome = totalPensionIncome * pensionReversionary;
+      }
+      
       const indexedMaxPension = currentPensionParams.maxPensionPerYear * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedThreshold = (isHomeowner ? currentPensionParams.assetTestThresholdHomeowner : currentPensionParams.assetTestThresholdNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedCutoff = (isHomeowner ? currentPensionParams.assetTestCutoffHomeowner : currentPensionParams.assetTestCutoffNonHomeowner) * Math.pow(1 + cpiRate / 100, year - 1);
       const indexedTaper = currentPensionParams.assetTaperPerYear * Math.pow(1 + cpiRate / 100, year - 1);
-      const indexedPensionIncome = totalPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
+      const indexedPensionIncome = adjustedPensionIncome * Math.pow(1 + cpiRate / 100, year - 1);
       
       let agePension = 0;
       if (includeAgePension && age >= currentPensionParams.eligibilityAge) {
@@ -718,9 +815,9 @@ const RetirementCalculator = () => {
       }
       
       // STEP 4: RAD REFUND (if exiting aged care)
-      // RAD is refunded to main super when exiting care
+      // RAD is refunded to cash (estate/beneficiary receives as cash, not super)
       if (radRefund > 0) {
-        mainSuper += radRefund;
+        cashAccount += radRefund;
       }
 
       // APPLY RETURNS:
@@ -738,7 +835,8 @@ const RetirementCalculator = () => {
         withdrawn, minDrawdown, superDrawnForMinimum,
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
         inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund,
-        partnerAlive
+        partnerAlive,
+        debtBalance: totalDebtBalance, debtPayment: totalDebtPayment, debtInterestPaid: totalDebtInterest, debtPrincipalPaid: totalDebtPrincipal
       });
 
       if (totalBalance <= 0) break;
@@ -1149,10 +1247,13 @@ const RetirementCalculator = () => {
     return runSimulation(returns, inflationRate, false, 35);
   }, [mainSuperBalance, sequencingBuffer, totalPensionIncome, baseSpending,
       selectedScenario, isHomeowner, includeAgePension, spendingPattern, useGuardrails, upperGuardrail, lowerGuardrail, guardrailAdjustment,
-      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
+      useHistoricalData, historicalPeriod, useMonteCarlo, monteCarloResults, useHistoricalMonteCarlo, historicalMonteCarloResults,
+      splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses,
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
-      personAtHomeSpending, deathInCare]);
+      personAtHomeSpending, deathInCare, 
+      includePartnerMortality, partnerAge, partnerGender, pensionReversionary,
+      includeDebt, debts]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1192,7 +1293,9 @@ const RetirementCalculator = () => {
     csv += 'Net Spending Need,Cash Used For Spending,Buffer Used For Spending,Super Used For Spending,Total Spent From Accounts,';
     csv += 'Minimum Drawdown Required,Super Drawn For Min Drawdown,Min Drawdown Excess Remaining in Cash,';
     csv += 'Return %,Main Super End,Buffer End,Cash End,Total End,';
-    csv += 'Guardrail Status,Current Spending Base\n';
+    csv += 'Guardrail Status,Current Spending Base,';
+    csv += 'In Aged Care,Aged Care Annual Cost,RAD Withdrawn,RAD Refund,Partner Alive,';
+    csv += 'Debt Balance,Debt Payment,Debt Interest,Debt Principal\n';
 
     // Calculate detailed breakdown for each year
     simulationResults.forEach((r: any, index: number) => {
@@ -1253,7 +1356,9 @@ const RetirementCalculator = () => {
       csv += `${netSpendingNeed.toFixed(2)},${cashUsed.toFixed(2)},${bufferUsed.toFixed(2)},${superUsedForSpending.toFixed(2)},${(cashUsed + bufferUsed + superUsedForSpending).toFixed(2)},`;
       csv += `${minDrawdownAmount.toFixed(2)},${superForMinimum.toFixed(2)},${excessToCash.toFixed(2)},`;
       csv += `${r.yearReturn.toFixed(2)},${r.mainSuper.toFixed(2)},${r.seqBuffer.toFixed(2)},${r.cashAccount.toFixed(2)},${r.totalBalance.toFixed(2)},`;
-      csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)}\n`;
+      csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)},`;
+      csv += `${r.inAgedCare ? 'TRUE' : 'FALSE'},${(r.agedCareAnnualCost || 0).toFixed(2)},${(r.radWithdrawn || 0).toFixed(2)},${(r.radRefund || 0).toFixed(2)},${r.partnerAlive ? 'TRUE' : 'FALSE'},`;
+      csv += `${(r.debtBalance || 0).toFixed(2)},${(r.debtPayment || 0).toFixed(2)},${(r.debtInterestPaid || 0).toFixed(2)},${(r.debtPrincipalPaid || 0).toFixed(2)}\n`;
     });
 
     // Download
@@ -1274,7 +1379,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
+            <p className="text-gray-600">Version 14.2 - In-App Quick Help</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1292,17 +1397,118 @@ const RetirementCalculator = () => {
                 Nominal $
               </button>
             </div>
-            <p className="text-xs text-gray-500 mb-2">
+           <p className="text-xs text-gray-500 mb-2">
               {showNominalDollars ? 'Future dollar amounts' : 'Retirement year purchasing power'}
             </p>
+            <button 
+              onClick={() => setShowHelpPanel(!showHelpPanel)}
+              className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 mb-2"
+            >
+              {showHelpPanel ? '📖 Hide Help' : '📖 Quick Help'}
+            </button>
             <button 
               onClick={exportDetailedCSV}
               className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
             >
               📊 Export Detailed CSV
             </button>
-          </div>
+         </div>
         </div>
+        
+        {showHelpPanel && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              📖 Quick Help Guide
+              <button 
+                onClick={() => setShowHelpPanel(false)}
+                className="ml-auto text-sm px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded"
+              >
+                ✕ Close
+              </button>
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-blue-700">🎯 Getting Started</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Main Super:</strong> Your growth assets earning variable returns</li>
+                  <li><strong>Sequencing Buffer:</strong> 3-5 years defensive cash (optional)</li>
+                  <li><strong>PSS/CSS Pension:</strong> Defined benefit pension income</li>
+                  <li><strong>Age Pension:</strong> Government payment (asset/income tested)</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-green-700">📊 Test Scenarios</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Constant Return:</strong> Simple baseline planning</li>
+                  <li><strong>Historical:</strong> Test against GFC, COVID, 1929, etc.</li>
+                  <li><strong>Monte Carlo:</strong> Run 1000s of random scenarios</li>
+                  <li><strong>Success Rate 90%+:</strong> ✅ Very safe plan</li>
+                  <li><strong>Success Rate 80-89%:</strong> ✅ Acceptable risk</li>
+                  <li><strong>Success Rate &lt;70%:</strong> ⚠️ Consider adjustments</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-purple-700">🛡️ Guardrails</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Dynamic spending:</strong> Adjusts based on portfolio performance</li>
+                  <li><strong>Increase spending:</strong> When portfolio doing well</li>
+                  <li><strong>Decrease spending:</strong> When portfolio struggling</li>
+                  <li><strong>Floor protection:</strong> Never below pension income</li>
+                  <li><strong>Recommended:</strong> Enable for realistic planning</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-orange-700">🏥 Advanced Features</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Aged Care:</strong> Model RAD + annual fees (~30% use)</li>
+                  <li><strong>Partner Mortality:</strong> Probabilistic death modeling</li>
+                  <li><strong>Debt Repayment:</strong> Multiple loans with extra payments</li>
+                  <li><strong>One-Off Expenses:</strong> Major expenses at specific ages</li>
+                  <li><strong>Splurge Spending:</strong> Extra spending for travel years</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-sm text-gray-700">
+                <strong>💡 Tip:</strong> Start simple with Constant Return, then test robustness with Monte Carlo. 
+                Enable Guardrails for realistic spending adjustments. Use Historical MC to see how your plan would have 
+                performed during actual market crashes (1929, 2008, etc.). Success rate 80%+ is generally recommended by financial advisors.
+              </p>
+            </div>
+            
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Need more detail?</strong> Full documentation covers all features, calculations, and examples.
+              </p>
+              <div className="flex gap-2 justify-center">
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_1.pdf', '_blank');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                >
+                  📥 Download PDF (45 pages)
+                </button>
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_1.docx', '_blank');
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                >
+                  📥 Download Word
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Comprehensive guide with examples, calculations, and detailed explanations
+              </p>
+            </div>
+          </div>
+        )}
         
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
           <h2 className="text-xl font-bold mb-3">Initial Situation</h2>
@@ -1521,6 +1727,28 @@ const RetirementCalculator = () => {
               {pensionChartData && pensionChartData.length > 0 && (
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-3">Age Pension Over Time</h3>
+                  
+                  {/* Partner Mortality Warning */}
+                  {includePartnerMortality && pensionRecipientType === 'couple' && (
+                    <div className="mb-3 p-3 bg-purple-50 border border-purple-200 rounded">
+                      <div className="flex items-start gap-2">
+                        <span className="text-purple-600 text-lg">⚠️</span>
+                        <div className="text-sm">
+                          <div className="font-semibold text-gray-900 mb-1">Partner Mortality: One Possible Outcome</div>
+                          <div className="text-gray-700">
+                            This chart shows ONE scenario where your partner dies at a specific age (based on mortality probabilities). 
+                            Income drops when partner dies: Age Pension switches to single rate, PSS/CSS reduces to {(pensionReversionary * 100).toFixed(0)}% reversionary.
+                            {!useMonteCarlo && !useHistoricalMonteCarlo && (
+                              <span className="block mt-1 font-medium text-purple-800">
+                                💡 Use Monte Carlo scenarios to see the full range of possible outcomes.
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
                   <ResponsiveContainer width="100%" height={250}>
                     <ComposedChart data={pensionChartData}>
                       <CartesianGrid strokeDasharray="3 3" />
@@ -1747,6 +1975,230 @@ const RetirementCalculator = () => {
         <div className="bg-white border p-4 rounded mb-6">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-xl font-bold">
+              Debt Repayment at Retirement
+              <InfoTooltip text="Model multiple debts (mortgages, loans) carried into retirement with amortized repayments including interest. Option to pay extra on each debt." />
+            </h2>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={includeDebt} 
+                onChange={(e) => setIncludeDebt(e.target.checked)} 
+                className="mr-2" 
+              />
+              <span className="text-sm font-medium">Include Debt Repayment</span>
+            </label>
+          </div>
+          
+          {includeDebt && (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-sm text-gray-700">
+                  Model debts you'll carry into retirement (e.g., remaining mortgage, investment property loan, car loan). 
+                  Calculator uses standard amortization with interest, and allows extra payments to pay down faster.
+                </p>
+              </div>
+
+              {debts.map((debt, actualIndex) => {
+                const minPayment = calculateMinimumDebtPayment(debt.amount, debt.interestRate, debt.repaymentYears);
+                const totalPayment = minPayment + debt.extraPayment;
+                
+                // Calculate payoff time with extra payments
+                let balance = debt.amount;
+                let yearsToPayoff = 0;
+                const monthlyRate = debt.interestRate / 100 / 12;
+                const monthlyPayment = totalPayment / 12;
+                
+                if (debt.extraPayment > 0 && balance > 0) {
+                  while (balance > 0 && yearsToPayoff < debt.repaymentYears) {
+                    for (let month = 0; month < 12 && balance > 0; month++) {
+                      const interest = balance * monthlyRate;
+                      const principal = Math.min(monthlyPayment - interest, balance);
+                      balance -= principal;
+                    }
+                    yearsToPayoff++;
+                  }
+                } else {
+                  yearsToPayoff = debt.repaymentYears;
+                }
+                
+                const interestSaved = debt.extraPayment > 0 ? (minPayment * debt.repaymentYears) - (totalPayment * yearsToPayoff) : 0;
+                
+                return (
+                  <div key={actualIndex} className="p-4 border border-gray-300 rounded space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-2">
+                          Debt Name
+                          <InfoTooltip text="Descriptive name for this debt. Example: 'Primary Mortgage', 'Investment Property Loan', 'Car Loan'" />
+                        </label>
+                        <input 
+                          type="text" 
+                          value={debt.name} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].name = e.target.value;
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          placeholder="e.g., Primary Mortgage"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Debt Amount
+                          <InfoTooltip text="Balance at retirement (age 60)" />
+                        </label>
+                        <input 
+                          type="number" 
+                          value={debt.amount} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].amount = Number(e.target.value);
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          step="10000"
+                          min="0"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Interest Rate
+                          <InfoTooltip text="Annual interest rate" />
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            value={debt.interestRate} 
+                            onChange={(e) => {
+                              const newDebts = [...debts];
+                              newDebts[actualIndex].interestRate = Number(e.target.value);
+                              setDebts(newDebts);
+                            }}
+                            className="w-full p-2 border rounded"
+                            step="0.1"
+                            min="0"
+                            max="15"
+                          />
+                          <span className="text-gray-600">%</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Repayment Period
+                          <InfoTooltip text="Years to pay off with minimum payments" />
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            value={debt.repaymentYears} 
+                            onChange={(e) => {
+                              const newDebts = [...debts];
+                              newDebts[actualIndex].repaymentYears = Number(e.target.value);
+                              setDebts(newDebts);
+                            }}
+                            className="w-full p-2 border rounded"
+                            step="1"
+                            min="1"
+                            max="30"
+                          />
+                          <span className="text-gray-600">years</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Extra Payment/Year
+                          <InfoTooltip text="Additional annual payment above minimum to pay down faster" />
+                        </label>
+                        <input 
+                          type="number" 
+                          value={debt.extraPayment} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].extraPayment = Number(e.target.value);
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          step="5000"
+                          min="0"
+                          placeholder="0 = minimum only"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        <div>
+                          <div className="text-gray-600">Min Payment</div>
+                          <div className="font-bold">{formatCurrency(minPayment)}/yr</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-600">Total Payment</div>
+                          <div className="font-bold">{formatCurrency(totalPayment)}/yr</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-600">Payoff Time</div>
+                          <div className="font-bold">{yearsToPayoff.toFixed(1)} yrs</div>
+                        </div>
+                        {debt.extraPayment > 0 && (
+                          <div>
+                            <div className="text-gray-600">Interest Saved</div>
+                            <div className="font-bold text-green-700">{formatCurrency(interestSaved)}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        const newDebts = debts.filter((_, i) => i !== actualIndex);
+                        setDebts(newDebts);
+                      }}
+                      className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                    >
+                      Remove Debt
+                    </button>
+                  </div>
+                );
+              })}
+              
+              <button 
+                onClick={() => {
+                  setDebts([...debts, { name: '', amount: 200000, interestRate: 6.0, repaymentYears: 15, extraPayment: 0 }]);
+                }}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                + Add Debt
+              </button>
+              
+              {debts.length > 0 && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                  <div className="font-semibold text-gray-900 mb-2">Summary</div>
+                  <div className="text-sm space-y-1">
+                    <div><strong>Total debt amount:</strong> {formatCurrency(debts.reduce((sum, d) => sum + d.amount, 0))}</div>
+                    <div><strong>Total minimum payments/year:</strong> {formatCurrency(debts.reduce((sum, d) => sum + calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears), 0))}</div>
+                    <div><strong>Total with extra payments/year:</strong> {formatCurrency(debts.reduce((sum, d) => sum + calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears) + d.extraPayment, 0))}</div>
+                    <div><strong>Number of debts:</strong> {debts.length}</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                <strong>Note:</strong> Debt payments are unavoidable commitments (like aged care fees) and are NOT subject to 
+                dynamic spending guardrails. They continue regardless of portfolio performance. If portfolio depletes before 
+                all debts are paid off, the simulation ends.
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border p-4 rounded mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">
               Aged Care Costs
               <InfoTooltip text="Model residential aged care costs including RAD (Refundable Accommodation Deposit) and ongoing fees. Australian data shows ~30% of retirees use residential aged care." />
             </h2>
@@ -1817,7 +2269,7 @@ const RetirementCalculator = () => {
                         Probabilistic aged care modeling is only available with <strong>Monte Carlo</strong> or <strong>Historical Monte Carlo</strong> scenarios.
                       </p>
                       <p className="text-xs text-gray-600">
-                        To use probabilistic aged care: Go to "Test Scenarios" section above and select either "Monte Carlo" or "Historical MC".
+                        To use probabilistic aged care: Go to "Test Scenarios" section below and select either "Monte Carlo" or "Historical MC".
                       </p>
                     </div>
                   </>
@@ -1964,6 +2416,97 @@ const RetirementCalculator = () => {
             </div>
           )}
         </div>
+
+        {pensionRecipientType === 'couple' && (
+          <div className="bg-white border p-4 rounded mb-6">
+            <h2 className="text-xl font-bold mb-3">
+              Partner Mortality
+              <InfoTooltip text="Model the death of your partner at any age (not just in aged care). Automatically transitions to single spending and Age Pension rates." />
+            </h2>
+            <div className="flex items-center gap-4 mb-4">
+              <label className="flex items-center">
+                <input 
+                  type="checkbox" 
+                  checked={includePartnerMortality} 
+                  onChange={(e) => setIncludePartnerMortality(e.target.checked)} 
+                  className="mr-2" 
+                />
+                <span className="text-sm font-medium">Enable Partner Mortality</span>
+              </label>
+            </div>
+            
+            {includePartnerMortality && (
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-gray-700 mb-3">
+                    Uses Australian life tables to model probabilistic death of your partner. When partner dies:
+                  </p>
+                  <ul className="text-sm text-gray-700 space-y-1 ml-4">
+                    <li>• Spending transitions to single level ({(personAtHomeSpending * 100).toFixed(0)}% of couple)</li>
+                    <li>• Age Pension switches to single rate</li>
+                    <li>• PSS/CSS pension reduced to reversionary amount ({(pensionReversionary * 100).toFixed(0)}%)</li>
+                  </ul>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Partner's Current Age
+                      <InfoTooltip text="Your partner's age at retirement start. Used to calculate age-based mortality probabilities." />
+                    </label>
+                    <input 
+                      type="number" 
+                      value={partnerAge} 
+                      onChange={(e) => setPartnerAge(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      min="50"
+                      max="70"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      Partner's Gender
+                      <InfoTooltip text="Affects mortality probabilities based on Australian life tables. Females have lower mortality rates." />
+                    </label>
+                    <select 
+                      value={partnerGender} 
+                      onChange={(e) => setPartnerGender(e.target.value as 'male' | 'female')} 
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    PSS/CSS Reversionary: {(pensionReversionary * 100).toFixed(0)}%
+                    <InfoTooltip text="Percentage of PSS/CSS pension that continues to surviving spouse. Typically 67% for most public service pensions." />
+                  </label>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="100" 
+                    step="1"
+                    value={pensionReversionary * 100} 
+                    onChange={(e) => setPensionReversionary(Number(e.target.value) / 100)} 
+                    className="w-full" 
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    If partner dies: ${formatCurrency(totalPensionIncome)} → ${formatCurrency(totalPensionIncome * pensionReversionary)}
+                  </p>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                  <strong>Note:</strong> Partner mortality is probabilistic - requires Monte Carlo scenarios to see risk distribution. 
+                  In other scenarios, use aged care "death in care" option for deterministic death modeling.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
@@ -2234,6 +2777,22 @@ const RetirementCalculator = () => {
                   <InfoTooltip text="Percentage of scenarios where money lasts to target age (35 years)." />
                 </div>
                 <div className="text-3xl font-bold text-green-700">{monteCarloResults.successRate.toFixed(1)}%</div>
+                <div className="mt-2 text-xs">
+                  {(() => {
+                    const rate = monteCarloResults.successRate;
+                    if (rate >= 90) {
+                      return <div className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">✓ Excellent - Very Safe</div>;
+                    } else if (rate >= 80) {
+                      return <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">✓ Good - Acceptable Risk</div>;
+                    } else if (rate >= 70) {
+                      return <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-semibold">⚠ Moderate - Higher Risk</div>;
+                    } else if (rate >= 60) {
+                      return <div className="px-2 py-1 bg-orange-100 text-orange-800 rounded font-semibold">⚠ Concerning - Risky</div>;
+                    } else {
+                      return <div className="px-2 py-1 bg-red-100 text-red-800 rounded font-semibold">✗ Poor - Not Recommended</div>;
+                    }
+                  })()}
+                </div>
               </div>
               <div className="bg-white p-4 rounded shadow">
                 <div className="text-sm text-gray-600">
@@ -2308,6 +2867,22 @@ const RetirementCalculator = () => {
                 <div className="text-sm text-gray-600">Success Rate</div>
                 <div className="text-3xl font-bold text-teal-700">{historicalMonteCarloResults.successRate.toFixed(1)}%</div>
                 <div className="text-xs text-gray-500 mt-1">Based on real data</div>
+                <div className="mt-2 text-xs">
+                  {(() => {
+                    const rate = historicalMonteCarloResults.successRate;
+                    if (rate >= 90) {
+                      return <div className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">✓ Excellent - Very Safe</div>;
+                    } else if (rate >= 80) {
+                      return <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">✓ Good - Acceptable Risk</div>;
+                    } else if (rate >= 70) {
+                      return <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-semibold">⚠ Moderate - Higher Risk</div>;
+                    } else if (rate >= 60) {
+                      return <div className="px-2 py-1 bg-orange-100 text-orange-800 rounded font-semibold">⚠ Concerning - Risky</div>;
+                    } else {
+                      return <div className="px-2 py-1 bg-red-100 text-red-800 rounded font-semibold">✗ Poor - Not Recommended</div>;
+                    }
+                  })()}
+                </div>
               </div>
               <div className="bg-white p-4 rounded shadow">
                 <div className="text-sm text-gray-600">Worst Outcome</div>
@@ -2432,6 +3007,21 @@ const RetirementCalculator = () => {
               </div>
             )}
 
+            {/* Partner Mortality Active Banner */}
+            {includePartnerMortality && pensionRecipientType === 'couple' && (
+              <div className="bg-purple-50 border-l-4 border-purple-500 p-3 mb-4">
+                <div className="text-sm">
+                  <span className="font-semibold text-purple-800">💔 Partner Mortality Active:</span>
+                  <span className="text-gray-700">
+                    {' '}Probabilistic death based on {partnerGender} life tables (partner age {partnerAge}). 
+                    On death: spending → {(personAtHomeSpending * 100).toFixed(0)}% of couple, PSS/CSS → {(pensionReversionary * 100).toFixed(0)}% reversionary.
+                    {!useMonteCarlo && !useHistoricalMonteCarlo && 
+                      ' ⚠️ Charts show ONE possible outcome - death age varies. Use Monte Carlo to see full risk distribution.'}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Explanatory Banner for Monte Carlo */}
             {useMonteCarlo && monteCarloResults && (
               <div className="bg-green-50 border-l-4 border-green-500 p-3 mb-4">
@@ -2537,11 +3127,14 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.2
+          Australian Retirement Planning Tool v14.2
         </div>
       </div>
     </div>
   );
 };
+
+export default RetirementCalculator;
+
 
 export default RetirementCalculator;
