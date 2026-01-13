@@ -1351,9 +1351,26 @@ const RetirementCalculator = () => {
               <p className="text-sm text-gray-600 mb-2">
                 <strong>Need more detail?</strong> Full documentation covers all features, calculations, and examples.
               </p>
-              <p className="text-xs text-gray-500">
-                (User guide is a separate 45-page Word document - save this calculator page, 
-                and you can share the full User Guide document separately)
+              <div className="flex gap-2 justify-center">
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_1.pdf', '_blank');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                >
+                  📥 Download PDF (45 pages)
+                </button>
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_1.docx', '_blank');
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                >
+                  📥 Download Word
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Comprehensive guide with examples, calculations, and detailed explanations
               </p>
             </div>
           </div>
