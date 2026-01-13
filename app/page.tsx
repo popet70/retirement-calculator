@@ -92,10 +92,7 @@ const RetirementCalculator = () => {
 
   // Debt Repayment at Retirement
   const [includeDebt, setIncludeDebt] = useState(false);
-  const [debtAmount, setDebtAmount] = useState(200000);
-  const [debtInterestRate, setDebtInterestRate] = useState(6.0);
-  const [debtRepaymentYears, setDebtRepaymentYears] = useState(15);
-  const [debtExtraPayment, setDebtExtraPayment] = useState(0); // Extra annual payment above minimum
+  const [debts, setDebts] = useState<Array<{name: string, amount: number, interestRate: number, repaymentYears: number, extraPayment: number}>>([]);
 
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
@@ -457,9 +454,15 @@ const RetirementCalculator = () => {
     let radPaid = 0; // Track if RAD has been paid (refundable on exit)
     const agedCareRandomValue = Math.random(); // Single random value for probabilistic aged care
     
-    // Debt repayment tracking
-    let debtBalance = includeDebt ? debtAmount : 0;
-    const minimumDebtPayment = includeDebt ? calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears) : 0;
+    // Debt repayment tracking - array of debts with balances
+    const debtBalances = includeDebt ? debts.map(d => ({
+      name: d.name,
+      balance: d.amount,
+      interestRate: d.interestRate,
+      repaymentYears: d.repaymentYears,
+      extraPayment: d.extraPayment,
+      minimumPayment: calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears)
+    })) : [];
     
     // Partner survival tracking (for aged care death scenario)
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
@@ -609,28 +612,39 @@ const RetirementCalculator = () => {
       additionalCosts += agedCareCosts.annualCost;
       
       // Debt repayment (not subject to guardrails - unavoidable commitment)
-      let debtPayment = 0;
-      let debtInterestPaid = 0;
-      let debtPrincipalPaid = 0;
+      let totalDebtPayment = 0;
+      let totalDebtInterest = 0;
+      let totalDebtPrincipal = 0;
+      let totalDebtBalance = 0;
       
-      if (debtBalance > 0) {
-        // Calculate interest for the year
-        debtInterestPaid = debtBalance * (debtInterestRate / 100);
+      if (includeDebt && debtBalances.length > 0) {
+        debtBalances.forEach(debt => {
+          if (debt.balance > 0) {
+            // Calculate interest for the year
+            const interestPaid = debt.balance * (debt.interestRate / 100);
+            
+            // Total payment = minimum + extra
+            const payment = debt.minimumPayment + debt.extraPayment;
+            
+            // Cap payment at outstanding balance + interest (can't overpay)
+            const actualPayment = Math.min(payment, debt.balance + interestPaid);
+            
+            // Calculate principal paid
+            const principalPaid = actualPayment - interestPaid;
+            
+            // Update debt balance
+            debt.balance = Math.max(0, debt.balance + interestPaid - actualPayment);
+            
+            // Accumulate totals
+            totalDebtPayment += actualPayment;
+            totalDebtInterest += interestPaid;
+            totalDebtPrincipal += principalPaid;
+            totalDebtBalance += debt.balance;
+          }
+        });
         
-        // Total payment = minimum + extra
-        const totalPayment = minimumDebtPayment + debtExtraPayment;
-        
-        // Cap payment at outstanding balance + interest (can't overpay)
-        debtPayment = Math.min(totalPayment, debtBalance + debtInterestPaid);
-        
-        // Calculate principal paid
-        debtPrincipalPaid = debtPayment - debtInterestPaid;
-        
-        // Update debt balance
-        debtBalance = Math.max(0, debtBalance + debtInterestPaid - debtPayment);
-        
-        // Add to additional costs
-        additionalCosts += debtPayment;
+        // Add total debt payments to additional costs
+        additionalCosts += totalDebtPayment;
       }
       
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
@@ -821,7 +835,7 @@ const RetirementCalculator = () => {
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
         inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund,
         partnerAlive,
-        debtBalance, debtPayment, debtInterestPaid, debtPrincipalPaid
+        debtBalance: totalDebtBalance, debtPayment: totalDebtPayment, debtInterestPaid: totalDebtInterest, debtPrincipalPaid: totalDebtPrincipal
       });
 
       if (totalBalance <= 0) break;
@@ -1238,7 +1252,7 @@ const RetirementCalculator = () => {
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
       personAtHomeSpending, deathInCare, 
       includePartnerMortality, partnerAge, partnerGender, pensionReversionary,
-      includeDebt, debtAmount, debtInterestRate, debtRepaymentYears, debtExtraPayment]);
+      includeDebt, debts]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1364,7 +1378,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 14.0 - Debt Repayment Feature</p>
+            <p className="text-gray-600">Version 14.1 - Multiple Debts + Success Rate Guidance</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1860,7 +1874,7 @@ const RetirementCalculator = () => {
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-xl font-bold">
               Debt Repayment at Retirement
-              <InfoTooltip text="Model debt (mortgage, loans) carried into retirement with amortized repayments including interest. Option to pay extra to reduce debt faster." />
+              <InfoTooltip text="Model multiple debts (mortgages, loans) carried into retirement with amortized repayments including interest. Option to pay extra on each debt." />
             </h2>
             <label className="flex items-center">
               <input 
@@ -1877,137 +1891,204 @@ const RetirementCalculator = () => {
             <div className="space-y-4">
               <div className="p-4 bg-blue-50 border border-blue-200 rounded">
                 <p className="text-sm text-gray-700">
-                  Model debt you'll carry into retirement (e.g., remaining mortgage, investment property loan). 
+                  Model debts you'll carry into retirement (e.g., remaining mortgage, investment property loan, car loan). 
                   Calculator uses standard amortization with interest, and allows extra payments to pay down faster.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Debt Amount at Retirement
-                    <InfoTooltip text="Total debt balance at age 60. Example: $200,000 remaining mortgage." />
-                  </label>
-                  <input 
-                    type="number" 
-                    value={debtAmount} 
-                    onChange={(e) => setDebtAmount(Number(e.target.value))} 
-                    className="w-full p-2 border rounded"
-                    step="10000"
-                    min="0"
-                  />
-                </div>
+              {debts.map((debt, actualIndex) => {
+                const minPayment = calculateMinimumDebtPayment(debt.amount, debt.interestRate, debt.repaymentYears);
+                const totalPayment = minPayment + debt.extraPayment;
                 
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Interest Rate
-                    <InfoTooltip text="Annual interest rate on the debt. Example: 6% for typical mortgage." />
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      value={debtInterestRate} 
-                      onChange={(e) => setDebtInterestRate(Number(e.target.value))} 
-                      className="w-full p-2 border rounded"
-                      step="0.1"
-                      min="0"
-                      max="15"
-                    />
-                    <span className="text-gray-600">%</span>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Repayment Period
-                    <InfoTooltip text="Years to pay off debt with minimum payments. Example: 15 years remaining on mortgage." />
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      value={debtRepaymentYears} 
-                      onChange={(e) => setDebtRepaymentYears(Number(e.target.value))} 
-                      className="w-full p-2 border rounded"
-                      step="1"
-                      min="1"
-                      max="30"
-                    />
-                    <span className="text-gray-600">years</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded">
-                <div className="text-sm font-semibold mb-2">Minimum Required Payment</div>
-                <div className="text-2xl font-bold text-gray-900">{formatCurrency(calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears))}/year</div>
-                <div className="text-xs text-gray-600 mt-1">
-                  Standard amortized payment to pay off ${formatCurrency(debtAmount)} at {debtInterestRate}% over {debtRepaymentYears} years
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Extra Payment Above Minimum
-                  <InfoTooltip text="Additional annual payment to pay down debt faster and save on interest. Example: Pay extra $10,000/year to clear mortgage sooner." />
-                </label>
-                <input 
-                  type="number" 
-                  value={debtExtraPayment} 
-                  onChange={(e) => setDebtExtraPayment(Number(e.target.value))} 
-                  className="w-full p-2 border rounded"
-                  step="5000"
-                  min="0"
-                  placeholder="0 = minimum payment only"
-                />
-              </div>
-
-              {debtExtraPayment > 0 && (() => {
-                const minPayment = calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears);
-                const totalPayment = minPayment + debtExtraPayment;
-                
-                // Estimate payoff time with extra payments
-                let balance = debtAmount;
-                let years = 0;
-                const monthlyRate = debtInterestRate / 100 / 12;
+                // Calculate payoff time with extra payments
+                let balance = debt.amount;
+                let yearsToPayoff = 0;
+                const monthlyRate = debt.interestRate / 100 / 12;
                 const monthlyPayment = totalPayment / 12;
                 
-                while (balance > 0 && years < debtRepaymentYears) {
-                  for (let month = 0; month < 12 && balance > 0; month++) {
-                    const interest = balance * monthlyRate;
-                    const principal = Math.min(monthlyPayment - interest, balance);
-                    balance -= principal;
+                if (debt.extraPayment > 0 && balance > 0) {
+                  while (balance > 0 && yearsToPayoff < debt.repaymentYears) {
+                    for (let month = 0; month < 12 && balance > 0; month++) {
+                      const interest = balance * monthlyRate;
+                      const principal = Math.min(monthlyPayment - interest, balance);
+                      balance -= principal;
+                    }
+                    yearsToPayoff++;
                   }
-                  years++;
+                } else {
+                  yearsToPayoff = debt.repaymentYears;
                 }
                 
-                const interestSaved = (minPayment * debtRepaymentYears) - (totalPayment * years);
+                const interestSaved = debt.extraPayment > 0 ? (minPayment * debt.repaymentYears) - (totalPayment * yearsToPayoff) : 0;
                 
                 return (
-                  <div className="p-4 bg-green-50 border border-green-200 rounded">
-                    <div className="text-sm font-semibold mb-2">Impact of Extra Payments</div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <div className="text-gray-600">Total Annual Payment</div>
-                        <div className="text-lg font-bold text-green-700">{formatCurrency(totalPayment)}</div>
+                  <div key={actualIndex} className="p-4 border border-gray-300 rounded space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium mb-2">
+                          Debt Name
+                          <InfoTooltip text="Descriptive name for this debt. Example: 'Primary Mortgage', 'Investment Property Loan', 'Car Loan'" />
+                        </label>
+                        <input 
+                          type="text" 
+                          value={debt.name} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].name = e.target.value;
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          placeholder="e.g., Primary Mortgage"
+                        />
                       </div>
+                      
                       <div>
-                        <div className="text-gray-600">Estimated Payoff Time</div>
-                        <div className="text-lg font-bold text-green-700">{years.toFixed(1)} years</div>
-                        <div className="text-xs text-gray-600">(vs {debtRepaymentYears} years minimum)</div>
+                        <label className="block text-sm font-medium mb-2">
+                          Debt Amount
+                          <InfoTooltip text="Balance at retirement (age 60)" />
+                        </label>
+                        <input 
+                          type="number" 
+                          value={debt.amount} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].amount = Number(e.target.value);
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          step="10000"
+                          min="0"
+                        />
                       </div>
+                      
                       <div>
-                        <div className="text-gray-600">Interest Saved</div>
-                        <div className="text-lg font-bold text-green-700">{formatCurrency(interestSaved)}</div>
+                        <label className="block text-sm font-medium mb-2">
+                          Interest Rate
+                          <InfoTooltip text="Annual interest rate" />
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            value={debt.interestRate} 
+                            onChange={(e) => {
+                              const newDebts = [...debts];
+                              newDebts[actualIndex].interestRate = Number(e.target.value);
+                              setDebts(newDebts);
+                            }}
+                            className="w-full p-2 border rounded"
+                            step="0.1"
+                            min="0"
+                            max="15"
+                          />
+                          <span className="text-gray-600">%</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Repayment Period
+                          <InfoTooltip text="Years to pay off with minimum payments" />
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            value={debt.repaymentYears} 
+                            onChange={(e) => {
+                              const newDebts = [...debts];
+                              newDebts[actualIndex].repaymentYears = Number(e.target.value);
+                              setDebts(newDebts);
+                            }}
+                            className="w-full p-2 border rounded"
+                            step="1"
+                            min="1"
+                            max="30"
+                          />
+                          <span className="text-gray-600">years</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Extra Payment/Year
+                          <InfoTooltip text="Additional annual payment above minimum to pay down faster" />
+                        </label>
+                        <input 
+                          type="number" 
+                          value={debt.extraPayment} 
+                          onChange={(e) => {
+                            const newDebts = [...debts];
+                            newDebts[actualIndex].extraPayment = Number(e.target.value);
+                            setDebts(newDebts);
+                          }}
+                          className="w-full p-2 border rounded"
+                          step="5000"
+                          min="0"
+                          placeholder="0 = minimum only"
+                        />
                       </div>
                     </div>
+                    
+                    <div className="p-3 bg-gray-50 border border-gray-200 rounded">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                        <div>
+                          <div className="text-gray-600">Min Payment</div>
+                          <div className="font-bold">{formatCurrency(minPayment)}/yr</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-600">Total Payment</div>
+                          <div className="font-bold">{formatCurrency(totalPayment)}/yr</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-600">Payoff Time</div>
+                          <div className="font-bold">{yearsToPayoff.toFixed(1)} yrs</div>
+                        </div>
+                        {debt.extraPayment > 0 && (
+                          <div>
+                            <div className="text-gray-600">Interest Saved</div>
+                            <div className="font-bold text-green-700">{formatCurrency(interestSaved)}</div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => {
+                        const newDebts = debts.filter((_, i) => i !== actualIndex);
+                        setDebts(newDebts);
+                      }}
+                      className="px-3 py-2 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
+                    >
+                      Remove Debt
+                    </button>
                   </div>
                 );
-              })()}
+              })}
+              
+              <button 
+                onClick={() => {
+                  setDebts([...debts, { name: '', amount: 200000, interestRate: 6.0, repaymentYears: 15, extraPayment: 0 }]);
+                }}
+                className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                + Add Debt
+              </button>
+              
+              {debts.length > 0 && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                  <div className="font-semibold text-gray-900 mb-2">Summary</div>
+                  <div className="text-sm space-y-1">
+                    <div><strong>Total debt amount:</strong> {formatCurrency(debts.reduce((sum, d) => sum + d.amount, 0))}</div>
+                    <div><strong>Total minimum payments/year:</strong> {formatCurrency(debts.reduce((sum, d) => sum + calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears), 0))}</div>
+                    <div><strong>Total with extra payments/year:</strong> {formatCurrency(debts.reduce((sum, d) => sum + calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears) + d.extraPayment, 0))}</div>
+                    <div><strong>Number of debts:</strong> {debts.length}</div>
+                  </div>
+                </div>
+              )}
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
                 <strong>Note:</strong> Debt payments are unavoidable commitments (like aged care fees) and are NOT subject to 
                 dynamic spending guardrails. They continue regardless of portfolio performance. If portfolio depletes before 
-                debt is paid off, the simulation ends.
+                all debts are paid off, the simulation ends.
               </div>
             </div>
           )}
@@ -2594,6 +2675,22 @@ const RetirementCalculator = () => {
                   <InfoTooltip text="Percentage of scenarios where money lasts to target age (35 years)." />
                 </div>
                 <div className="text-3xl font-bold text-green-700">{monteCarloResults.successRate.toFixed(1)}%</div>
+                <div className="mt-2 text-xs">
+                  {(() => {
+                    const rate = monteCarloResults.successRate;
+                    if (rate >= 90) {
+                      return <div className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">✓ Excellent - Very Safe</div>;
+                    } else if (rate >= 80) {
+                      return <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">✓ Good - Acceptable Risk</div>;
+                    } else if (rate >= 70) {
+                      return <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-semibold">⚠ Moderate - Higher Risk</div>;
+                    } else if (rate >= 60) {
+                      return <div className="px-2 py-1 bg-orange-100 text-orange-800 rounded font-semibold">⚠ Concerning - Risky</div>;
+                    } else {
+                      return <div className="px-2 py-1 bg-red-100 text-red-800 rounded font-semibold">✗ Poor - Not Recommended</div>;
+                    }
+                  })()}
+                </div>
               </div>
               <div className="bg-white p-4 rounded shadow">
                 <div className="text-sm text-gray-600">
@@ -2668,6 +2765,22 @@ const RetirementCalculator = () => {
                 <div className="text-sm text-gray-600">Success Rate</div>
                 <div className="text-3xl font-bold text-teal-700">{historicalMonteCarloResults.successRate.toFixed(1)}%</div>
                 <div className="text-xs text-gray-500 mt-1">Based on real data</div>
+                <div className="mt-2 text-xs">
+                  {(() => {
+                    const rate = historicalMonteCarloResults.successRate;
+                    if (rate >= 90) {
+                      return <div className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">✓ Excellent - Very Safe</div>;
+                    } else if (rate >= 80) {
+                      return <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded font-semibold">✓ Good - Acceptable Risk</div>;
+                    } else if (rate >= 70) {
+                      return <div className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded font-semibold">⚠ Moderate - Higher Risk</div>;
+                    } else if (rate >= 60) {
+                      return <div className="px-2 py-1 bg-orange-100 text-orange-800 rounded font-semibold">⚠ Concerning - Risky</div>;
+                    } else {
+                      return <div className="px-2 py-1 bg-red-100 text-red-800 rounded font-semibold">✗ Poor - Not Recommended</div>;
+                    }
+                  })()}
+                </div>
               </div>
               <div className="bg-white p-4 rounded shadow">
                 <div className="text-sm text-gray-600">Worst Outcome</div>
@@ -2912,7 +3025,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v14.0
+          Australian Retirement Planning Tool v14.1
         </div>
       </div>
     </div>
