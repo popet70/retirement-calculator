@@ -544,7 +544,7 @@ const RetirementCalculator = () => {
         }
       }
       
-      // GUARDRAILS (now uses correct spending base after aged care adjustment)
+      // GUARDRAILS - Compare NET withdrawal rate (spending minus income)
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
         // Compare withdrawal rates in REAL terms
@@ -564,33 +564,79 @@ const RetirementCalculator = () => {
           totalPlannedSpending += realAgedCareCost;
         }
         
-        const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
+        // Calculate current income to determine NET spending need
+        // Use dynamic pension parameters based on partner status
+        const currentPensionParams = (pensionRecipientType === 'couple' && !partnerAlive) 
+          ? {
+              eligibilityAge: 67,
+              maxPensionPerYear: 29754,  // Single rate
+              assetTestThresholdHomeowner: 314000,
+              assetTestCutoffHomeowner: 695500,
+              assetTestThresholdNonHomeowner: 566000,
+              assetTestCutoffNonHomeowner: 947500,
+              assetTaperPerYear: 78,
+              incomeTestFreeArea: 5512,
+              incomeTaperRate: 0.50
+            }
+          : agePensionParams;
+
+        // Estimate current Age Pension based on current portfolio
+        let estimatedAgePension = 0;
+        if (includeAgePension && age >= currentPensionParams.eligibilityAge) {
+          const totalAssets = mainSuper + seqBuffer + cashAccount;
+          const realAssets = totalAssets / Math.pow(1 + cpiRate / 100, year - 1);
+          const indexedMaxPension = currentPensionParams.maxPensionPerYear;
+          const indexedThreshold = (isHomeowner ? currentPensionParams.assetTestThresholdHomeowner : currentPensionParams.assetTestThresholdNonHomeowner);
+          const indexedCutoff = (isHomeowner ? currentPensionParams.assetTestCutoffHomeowner : currentPensionParams.assetTestCutoffNonHomeowner);
+          
+          let assetTestPension = indexedMaxPension;
+          if (realAssets > indexedThreshold) {
+            const excess = realAssets - indexedThreshold;
+            const reduction = Math.floor(excess / 1000) * currentPensionParams.assetTaperPerYear;
+            assetTestPension = Math.max(0, indexedMaxPension - reduction);
+          }
+          if (realAssets >= indexedCutoff) assetTestPension = 0;
+          
+          estimatedAgePension = assetTestPension;
+        }
+
+        // Adjust pension income for partner death
+        const adjustedPensionIncome = (pensionRecipientType === 'couple' && !partnerAlive)
+          ? totalPensionIncome * pensionReversionary
+          : totalPensionIncome;
+
+        // Calculate NET spending need (what actually comes from portfolio)
+        const totalEstimatedIncome = adjustedPensionIncome + estimatedAgePension;
+        const netSpendingNeed = Math.max(0, totalPlannedSpending - totalEstimatedIncome);
+        
+        // Compare NET withdrawal rates
+        const currentWithdrawalRate = realPortfolio > 0 ? netSpendingNeed / realPortfolio : 0;
         const safeWithdrawalRate = initialWithdrawalRate;
-        const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
+        const withdrawalRateRatio = safeWithdrawalRate > 0 ? (currentWithdrawalRate / safeWithdrawalRate) * 100 : 100;
   
-  if (withdrawalRateRatio <= 100 - upperGuardrail) {
-    guardrailStatus = 'increase';
-    currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
- } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
-    guardrailStatus = 'decrease';
-    const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
-    const spendingMultiplier = getSpendingMultiplier(year);
-    
-    // Floor includes PSS/CSS pension AND Age Pension (but ONLY if Age Pension is enabled)
-    const maxAgePension = includeAgePension 
-      ? ((pensionRecipientType === 'couple' && !partnerAlive) 
-          ? 29754  // Single rate if partner died
-          : agePensionParams.maxPensionPerYear)  // Couple or single rate
-      : 0;  // Don't include Age Pension in floor if it's disabled
-      
-    const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
-      ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
-      : totalPensionIncome;
-      
-    const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
-    currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
-  }
-}
+        if (withdrawalRateRatio <= 100 - upperGuardrail) {
+          guardrailStatus = 'increase';
+          currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
+        } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
+          guardrailStatus = 'decrease';
+          const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
+          const spendingMultiplier = getSpendingMultiplier(year);
+          
+          // Floor includes PSS/CSS pension AND Age Pension (but ONLY if Age Pension is enabled)
+          const maxAgePension = includeAgePension 
+            ? ((pensionRecipientType === 'couple' && !partnerAlive) 
+                ? 29754  // Single rate if partner died
+                : agePensionParams.maxPensionPerYear)  // Couple or single rate
+            : 0;  // Don't include Age Pension in floor if it's disabled
+            
+          const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
+            ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
+            : totalPensionIncome;
+            
+          const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
+          currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
+        }
+      }
       
       const spendingMultiplier = getSpendingMultiplier(year);
       
