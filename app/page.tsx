@@ -571,17 +571,22 @@ const RetirementCalculator = () => {
   if (withdrawalRateRatio <= 100 - upperGuardrail) {
     guardrailStatus = 'increase';
     currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
-  } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
+ } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
     guardrailStatus = 'decrease';
     const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
     const spendingMultiplier = getSpendingMultiplier(year);
-    // Floor includes both PSS/CSS pension AND Age Pension to prevent spending dropping below total guaranteed income
-    const maxAgePension = (pensionRecipientType === 'couple' && !partnerAlive) 
-      ? 29754  // Single rate if partner died
-      : agePensionParams.maxPensionPerYear;  // Couple or single rate
+    
+    // Floor includes PSS/CSS pension AND Age Pension (but ONLY if Age Pension is enabled)
+    const maxAgePension = includeAgePension 
+      ? ((pensionRecipientType === 'couple' && !partnerAlive) 
+          ? 29754  // Single rate if partner died
+          : agePensionParams.maxPensionPerYear)  // Couple or single rate
+      : 0;  // Don't include Age Pension in floor if it's disabled
+      
     const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
       ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
       : totalPensionIncome;
+      
     const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
     currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
   }
