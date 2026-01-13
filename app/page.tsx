@@ -423,9 +423,7 @@ const RetirementCalculator = () => {
     const startAge = retirementAge;
     const initialPortfolio = mainSuperBalance + sequencingBuffer;
     let currentSpendingBase = baseSpending;
-    // Calculate initial NET withdrawal rate (spending minus pension income)
-    const initialNetSpendingNeed = Math.max(0, baseSpending - totalPensionIncome);
-    const initialWithdrawalRate = initialNetSpendingNeed / initialPortfolio;
+    const initialWithdrawalRate = baseSpending / initialPortfolio;
     const yearsToRun = maxYears || 35;
     
     // Aged care state tracking
@@ -472,14 +470,13 @@ const RetirementCalculator = () => {
         spendingAdjustedForSingle = false;
       }
       
-      // GUARDRAILS - Compare NET withdrawal rate (spending minus income) in REAL TERMS
+      // GUARDRAILS (now uses correct spending base after aged care adjustment)
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
         // Compare withdrawal rates in REAL terms
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
         
-        // Calculate total planned spending for this year (base + splurge + aged care if applicable)
-        // All in REAL TERMS (retirement year dollars)
+        // Calculate total planned spending for this year (base + splurge if applicable)
         let totalPlannedSpending = currentSpendingBase;
         if (splurgeAmount > 0) {
           const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
@@ -487,49 +484,10 @@ const RetirementCalculator = () => {
             totalPlannedSpending += splurgeAmount;
           }
         }
-        // Include aged care annual costs in guardrail calculation (in real terms)
-        if (agedCareCosts.annualCost > 0) {
-          const realAgedCareCost = agedCareCosts.annualCost / Math.pow(1 + cpiRate / 100, year - 1);
-          totalPlannedSpending += realAgedCareCost;
-        }
         
-        // Calculate current income to determine NET spending need
-        // Adjust pension income for partner death (reversionary benefit)
-        const adjustedPensionIncome = (pensionRecipientType === 'couple' && !partnerAlive)
-          ? totalPensionIncome * pensionReversionary
-          : totalPensionIncome;
-        
-        // CRITICAL: Convert pension income to REAL TERMS to match spending
-        const realPensionIncome = adjustedPensionIncome / Math.pow(1 + cpiRate / 100, year - 1);
-        
-        // Estimate current Age Pension based on current portfolio (in REAL terms)
-        let estimatedAgePension = 0;
-        if (includeAgePension && age >= agePensionParams.eligibilityAge) {
-          const totalAssets = mainSuper + seqBuffer + cashAccount;
-          const realAssets = totalAssets / Math.pow(1 + cpiRate / 100, year - 1);
-          const indexedMaxPension = agePensionParams.maxPensionPerYear;
-          const indexedThreshold = (isHomeowner ? agePensionParams.assetTestThresholdHomeowner : agePensionParams.assetTestThresholdNonHomeowner);
-          const indexedCutoff = (isHomeowner ? agePensionParams.assetTestCutoffHomeowner : agePensionParams.assetTestCutoffNonHomeowner);
-          
-          let assetTestPension = indexedMaxPension;
-          if (realAssets > indexedThreshold) {
-            const excess = realAssets - indexedThreshold;
-            const reduction = Math.floor(excess / 1000) * agePensionParams.assetTaperPerYear;
-            assetTestPension = Math.max(0, indexedMaxPension - reduction);
-          }
-          if (realAssets >= indexedCutoff) assetTestPension = 0;
-          
-          estimatedAgePension = assetTestPension;
-        }
-        
-        // Calculate NET spending need (what actually comes from portfolio) - ALL IN REAL TERMS
-        const totalEstimatedIncome = realPensionIncome + estimatedAgePension;
-        const netSpendingNeed = Math.max(0, totalPlannedSpending - totalEstimatedIncome);
-        
-        // Compare NET withdrawal rates
-        const currentWithdrawalRate = realPortfolio > 0 ? netSpendingNeed / realPortfolio : 0;
+        const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
         const safeWithdrawalRate = initialWithdrawalRate;
-        const withdrawalRateRatio = safeWithdrawalRate > 0 ? (currentWithdrawalRate / safeWithdrawalRate) * 100 : 100;
+        const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
   
   if (withdrawalRateRatio <= 100 - upperGuardrail) {
     guardrailStatus = 'increase';
@@ -538,52 +496,10 @@ const RetirementCalculator = () => {
     guardrailStatus = 'decrease';
     const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
     const spendingMultiplier = getSpendingMultiplier(year);
-    
-    // Floor includes PSS/CSS pension AND Age Pension (but ONLY if Age Pension is enabled)
-    const maxAgePension = includeAgePension 
-      ? ((pensionRecipientType === 'couple' && !partnerAlive) 
-          ? 29754  // Single rate if partner died
-          : agePensionParams.maxPensionPerYear)  // Couple or single rate
-      : 0;  // Don't include Age Pension in floor if it's disabled
-      
-    const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
-      ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
-      : totalPensionIncome;
-      
-    const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
+    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
     currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
   }
 }
-      
-      // DEBUG LOGGING - REMOVE AFTER FIXING
-      if (year <= 5) {
-        console.log(`=== YEAR ${year} (Age ${age}) ===`);
-        console.log(`Guardrail Status: ${guardrailStatus}`);
-        console.log(`currentSpendingBase: ${currentSpendingBase.toFixed(2)}`);
-        if (useGuardrails && year > 1) {
-          const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-          const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
-          
-          // Recalculate for logging (variables are out of scope)
-          let totalPlannedSpending = currentSpendingBase;
-          if (splurgeAmount > 0) {
-            const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-            if (age >= splurgeStartAge && age <= splurgeEndAge) {
-              totalPlannedSpending += splurgeAmount;
-            }
-          }
-          
-          const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
-          const withdrawalRateRatio = initialWithdrawalRate > 0 ? (currentWithdrawalRate / initialWithdrawalRate) * 100 : 100;
-          
-          console.log(`Real Portfolio: ${realPortfolio.toFixed(2)}`);
-          console.log(`Total Planned Spending: ${totalPlannedSpending.toFixed(2)}`);
-          console.log(`Current WD Rate: ${(currentWithdrawalRate * 100).toFixed(4)}%`);
-          console.log(`Initial WD Rate: ${(initialWithdrawalRate * 100).toFixed(4)}%`);
-          console.log(`Ratio: ${withdrawalRateRatio.toFixed(2)}%`);
-        }
-        console.log('');
-      }
       
       const spendingMultiplier = getSpendingMultiplier(year);
       
@@ -623,9 +539,6 @@ const RetirementCalculator = () => {
         radRefund = radPaid;
         radPaid = 0; // Reset after refund
       }
-      
-      // Annual aged care fees (not refundable)
-      additionalCosts += agedCareCosts.annualCost;
       
       // Add one-off expenses for this age (not subject to guardrails)
       let oneOffAddition = 0;
