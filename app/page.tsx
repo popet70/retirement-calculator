@@ -90,6 +90,13 @@ const RetirementCalculator = () => {
   const [partnerGender, setPartnerGender] = useState<'male' | 'female'>('female');
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
+  // Debt Repayment at Retirement
+  const [includeDebt, setIncludeDebt] = useState(false);
+  const [debtAmount, setDebtAmount] = useState(200000);
+  const [debtInterestRate, setDebtInterestRate] = useState(6.0);
+  const [debtRepaymentYears, setDebtRepaymentYears] = useState(15);
+  const [debtExtraPayment, setDebtExtraPayment] = useState(0); // Extra annual payment above minimum
+
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
     const currentYear = 2026;
@@ -415,6 +422,24 @@ const RetirementCalculator = () => {
     return table[lowerBracket];
   };
 
+  // Calculate minimum annual payment for amortized loan
+  const calculateMinimumDebtPayment = (principal: number, annualRate: number, years: number): number => {
+    if (principal <= 0 || years <= 0) return 0;
+    const monthlyRate = annualRate / 100 / 12;
+    const numPayments = years * 12;
+    
+    if (monthlyRate === 0) {
+      // No interest - simple division
+      return principal / years;
+    }
+    
+    // Standard amortization formula: P * [r(1+r)^n] / [(1+r)^n - 1]
+    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / 
+                           (Math.pow(1 + monthlyRate, numPayments) - 1);
+    
+    return monthlyPayment * 12; // Annual payment
+  };
+
   const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
@@ -431,6 +456,10 @@ const RetirementCalculator = () => {
     let yearsInAgedCare = 0;
     let radPaid = 0; // Track if RAD has been paid (refundable on exit)
     const agedCareRandomValue = Math.random(); // Single random value for probabilistic aged care
+    
+    // Debt repayment tracking
+    let debtBalance = includeDebt ? debtAmount : 0;
+    const minimumDebtPayment = includeDebt ? calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears) : 0;
     
     // Partner survival tracking (for aged care death scenario)
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
@@ -578,6 +607,31 @@ const RetirementCalculator = () => {
       
       // Annual aged care fees (not refundable, not subject to guardrails)
       additionalCosts += agedCareCosts.annualCost;
+      
+      // Debt repayment (not subject to guardrails - unavoidable commitment)
+      let debtPayment = 0;
+      let debtInterestPaid = 0;
+      let debtPrincipalPaid = 0;
+      
+      if (debtBalance > 0) {
+        // Calculate interest for the year
+        debtInterestPaid = debtBalance * (debtInterestRate / 100);
+        
+        // Total payment = minimum + extra
+        const totalPayment = minimumDebtPayment + debtExtraPayment;
+        
+        // Cap payment at outstanding balance + interest (can't overpay)
+        debtPayment = Math.min(totalPayment, debtBalance + debtInterestPaid);
+        
+        // Calculate principal paid
+        debtPrincipalPaid = debtPayment - debtInterestPaid;
+        
+        // Update debt balance
+        debtBalance = Math.max(0, debtBalance + debtInterestPaid - debtPayment);
+        
+        // Add to additional costs
+        additionalCosts += debtPayment;
+      }
       
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
       let radWithdrawn = 0;
@@ -766,7 +820,8 @@ const RetirementCalculator = () => {
         withdrawn, minDrawdown, superDrawnForMinimum,
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
         inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund,
-        partnerAlive
+        partnerAlive,
+        debtBalance, debtPayment, debtInterestPaid, debtPrincipalPaid
       });
 
       if (totalBalance <= 0) break;
@@ -1182,7 +1237,8 @@ const RetirementCalculator = () => {
       currentAge, retirementAge, agePensionParams, pensionRecipientType, selectedFormalTest, formalTestResults,
       includeAgedCare, agedCareApproach, agedCareRAD, agedCareAnnualCost, deterministicAgedCareAge, agedCareDuration,
       personAtHomeSpending, deathInCare, 
-      includePartnerMortality, partnerAge, partnerGender, pensionReversionary]);
+      includePartnerMortality, partnerAge, partnerGender, pensionReversionary,
+      includeDebt, debtAmount, debtInterestRate, debtRepaymentYears, debtExtraPayment]);
 
   const chartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1223,7 +1279,8 @@ const RetirementCalculator = () => {
     csv += 'Minimum Drawdown Required,Super Drawn For Min Drawdown,Min Drawdown Excess Remaining in Cash,';
     csv += 'Return %,Main Super End,Buffer End,Cash End,Total End,';
     csv += 'Guardrail Status,Current Spending Base,';
-    csv += 'In Aged Care,Aged Care Annual Cost,RAD Withdrawn,RAD Refund,Partner Alive\n';
+    csv += 'In Aged Care,Aged Care Annual Cost,RAD Withdrawn,RAD Refund,Partner Alive,';
+    csv += 'Debt Balance,Debt Payment,Debt Interest,Debt Principal\n';
 
     // Calculate detailed breakdown for each year
     simulationResults.forEach((r: any, index: number) => {
@@ -1285,7 +1342,8 @@ const RetirementCalculator = () => {
       csv += `${minDrawdownAmount.toFixed(2)},${superForMinimum.toFixed(2)},${excessToCash.toFixed(2)},`;
       csv += `${r.yearReturn.toFixed(2)},${r.mainSuper.toFixed(2)},${r.seqBuffer.toFixed(2)},${r.cashAccount.toFixed(2)},${r.totalBalance.toFixed(2)},`;
       csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)},`;
-      csv += `${r.inAgedCare ? 'TRUE' : 'FALSE'},${(r.agedCareAnnualCost || 0).toFixed(2)},${(r.radWithdrawn || 0).toFixed(2)},${(r.radRefund || 0).toFixed(2)},${r.partnerAlive ? 'TRUE' : 'FALSE'}\n`;
+      csv += `${r.inAgedCare ? 'TRUE' : 'FALSE'},${(r.agedCareAnnualCost || 0).toFixed(2)},${(r.radWithdrawn || 0).toFixed(2)},${(r.radRefund || 0).toFixed(2)},${r.partnerAlive ? 'TRUE' : 'FALSE'},`;
+      csv += `${(r.debtBalance || 0).toFixed(2)},${(r.debtPayment || 0).toFixed(2)},${(r.debtInterestPaid || 0).toFixed(2)},${(r.debtPrincipalPaid || 0).toFixed(2)}\n`;
     });
 
     // Download
@@ -1306,7 +1364,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 13.4 - Guardrails Floor Includes Age Pension</p>
+            <p className="text-gray-600">Version 14.0 - Debt Repayment Feature</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1794,6 +1852,163 @@ const RetirementCalculator = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border p-4 rounded mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">
+              Debt Repayment at Retirement
+              <InfoTooltip text="Model debt (mortgage, loans) carried into retirement with amortized repayments including interest. Option to pay extra to reduce debt faster." />
+            </h2>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={includeDebt} 
+                onChange={(e) => setIncludeDebt(e.target.checked)} 
+                className="mr-2" 
+              />
+              <span className="text-sm font-medium">Include Debt Repayment</span>
+            </label>
+          </div>
+          
+          {includeDebt && (
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-sm text-gray-700">
+                  Model debt you'll carry into retirement (e.g., remaining mortgage, investment property loan). 
+                  Calculator uses standard amortization with interest, and allows extra payments to pay down faster.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Debt Amount at Retirement
+                    <InfoTooltip text="Total debt balance at age 60. Example: $200,000 remaining mortgage." />
+                  </label>
+                  <input 
+                    type="number" 
+                    value={debtAmount} 
+                    onChange={(e) => setDebtAmount(Number(e.target.value))} 
+                    className="w-full p-2 border rounded"
+                    step="10000"
+                    min="0"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Interest Rate
+                    <InfoTooltip text="Annual interest rate on the debt. Example: 6% for typical mortgage." />
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      value={debtInterestRate} 
+                      onChange={(e) => setDebtInterestRate(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      step="0.1"
+                      min="0"
+                      max="15"
+                    />
+                    <span className="text-gray-600">%</span>
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Repayment Period
+                    <InfoTooltip text="Years to pay off debt with minimum payments. Example: 15 years remaining on mortgage." />
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      value={debtRepaymentYears} 
+                      onChange={(e) => setDebtRepaymentYears(Number(e.target.value))} 
+                      className="w-full p-2 border rounded"
+                      step="1"
+                      min="1"
+                      max="30"
+                    />
+                    <span className="text-gray-600">years</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded">
+                <div className="text-sm font-semibold mb-2">Minimum Required Payment</div>
+                <div className="text-2xl font-bold text-gray-900">{formatCurrency(calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears))}/year</div>
+                <div className="text-xs text-gray-600 mt-1">
+                  Standard amortized payment to pay off ${formatCurrency(debtAmount)} at {debtInterestRate}% over {debtRepaymentYears} years
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Extra Payment Above Minimum
+                  <InfoTooltip text="Additional annual payment to pay down debt faster and save on interest. Example: Pay extra $10,000/year to clear mortgage sooner." />
+                </label>
+                <input 
+                  type="number" 
+                  value={debtExtraPayment} 
+                  onChange={(e) => setDebtExtraPayment(Number(e.target.value))} 
+                  className="w-full p-2 border rounded"
+                  step="5000"
+                  min="0"
+                  placeholder="0 = minimum payment only"
+                />
+              </div>
+
+              {debtExtraPayment > 0 && (() => {
+                const minPayment = calculateMinimumDebtPayment(debtAmount, debtInterestRate, debtRepaymentYears);
+                const totalPayment = minPayment + debtExtraPayment;
+                
+                // Estimate payoff time with extra payments
+                let balance = debtAmount;
+                let years = 0;
+                const monthlyRate = debtInterestRate / 100 / 12;
+                const monthlyPayment = totalPayment / 12;
+                
+                while (balance > 0 && years < debtRepaymentYears) {
+                  for (let month = 0; month < 12 && balance > 0; month++) {
+                    const interest = balance * monthlyRate;
+                    const principal = Math.min(monthlyPayment - interest, balance);
+                    balance -= principal;
+                  }
+                  years++;
+                }
+                
+                const interestSaved = (minPayment * debtRepaymentYears) - (totalPayment * years);
+                
+                return (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded">
+                    <div className="text-sm font-semibold mb-2">Impact of Extra Payments</div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-600">Total Annual Payment</div>
+                        <div className="text-lg font-bold text-green-700">{formatCurrency(totalPayment)}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600">Estimated Payoff Time</div>
+                        <div className="text-lg font-bold text-green-700">{years.toFixed(1)} years</div>
+                        <div className="text-xs text-gray-600">(vs {debtRepaymentYears} years minimum)</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600">Interest Saved</div>
+                        <div className="text-lg font-bold text-green-700">{formatCurrency(interestSaved)}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                <strong>Note:</strong> Debt payments are unavoidable commitments (like aged care fees) and are NOT subject to 
+                dynamic spending guardrails. They continue regardless of portfolio performance. If portfolio depletes before 
+                debt is paid off, the simulation ends.
+              </div>
             </div>
           )}
         </div>
@@ -2697,7 +2912,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v13.4
+          Australian Retirement Planning Tool v14.0
         </div>
       </div>
     </div>
