@@ -542,7 +542,14 @@ const RetirementCalculator = () => {
     guardrailStatus = 'decrease';
     const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
     const spendingMultiplier = getSpendingMultiplier(year);
-    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
+    // Floor includes both PSS/CSS pension AND Age Pension to prevent spending dropping below total guaranteed income
+    const maxAgePension = (pensionRecipientType === 'couple' && !partnerAlive) 
+      ? 29754  // Single rate if partner died
+      : agePensionParams.maxPensionPerYear;  // Couple or single rate
+    const adjustedPSS = (pensionRecipientType === 'couple' && !partnerAlive)
+      ? totalPensionIncome * pensionReversionary  // Apply reversionary if partner died
+      : totalPensionIncome;
+    const indexedPensionFloor = (adjustedPSS + maxAgePension) / spendingMultiplier;
     currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
   }
 }
@@ -1299,7 +1306,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 13.3 - RAD Refund to Cash Account</p>
+            <p className="text-gray-600">Version 13.4 - Guardrails Floor Includes Age Pension</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2690,7 +2697,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v13.3
+          Australian Retirement Planning Tool v13.4
         </div>
       </div>
     </div>
