@@ -645,7 +645,27 @@ const RetirementCalculator = () => {
           currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
         }
       }
+         }
       
+      // DEBUG LOGGING - REMOVE AFTER FIXING
+      if (year <= 5) {
+        console.log(`=== YEAR ${year} (Age ${age}) ===`);
+        console.log(`Guardrail Status: ${guardrailStatus}`);
+        console.log(`currentSpendingBase: ${currentSpendingBase.toFixed(2)}`);
+        if (useGuardrails && year > 1) {
+          console.log(`Real Portfolio: ${realPortfolio.toFixed(2)}`);
+          console.log(`Real Pension Income: ${realPensionIncome.toFixed(2)}`);
+          console.log(`Net Spending Need: ${netSpendingNeed.toFixed(2)}`);
+          console.log(`Current WD Rate: ${(currentWithdrawalRate * 100).toFixed(4)}%`);
+          console.log(`Initial WD Rate: ${(initialWithdrawalRate * 100).toFixed(4)}%`);
+          console.log(`Ratio: ${withdrawalRateRatio.toFixed(2)}%`);
+          if (guardrailStatus === 'decrease') {
+            console.log(`Proposed Spending: ${proposedSpending.toFixed(2)}`);
+            console.log(`Pension Floor: ${indexedPensionFloor.toFixed(2)}`);
+          }
+        }
+        console.log('');
+      }
       const spendingMultiplier = getSpendingMultiplier(year);
       
       // Calculate base spending in real terms including splurge
