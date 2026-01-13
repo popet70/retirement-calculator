@@ -446,7 +446,9 @@ const RetirementCalculator = () => {
     const startAge = retirementAge;
     const initialPortfolio = mainSuperBalance + sequencingBuffer;
     let currentSpendingBase = baseSpending;
-    const initialWithdrawalRate = baseSpending / initialPortfolio;
+    // Calculate initial NET withdrawal rate (spending minus pension income)
+    const initialNetSpendingNeed = Math.max(0, baseSpending - totalPensionIncome);
+    const initialWithdrawalRate = initialNetSpendingNeed / initialPortfolio;
     const yearsToRun = maxYears || 35;
     
     // Aged care state tracking
@@ -544,13 +546,14 @@ const RetirementCalculator = () => {
         }
       }
       
-      // GUARDRAILS - Compare NET withdrawal rate (spending minus income)
+     // GUARDRAILS - Compare NET withdrawal rate (spending minus income) in REAL TERMS
       if (useGuardrails && year > 1) {
         const currentPortfolio = mainSuper + seqBuffer + cashAccount;
         // Compare withdrawal rates in REAL terms
         const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
         
         // Calculate total planned spending for this year (base + splurge + aged care if applicable)
+        // All in REAL TERMS (retirement year dollars)
         let totalPlannedSpending = currentSpendingBase;
         if (splurgeAmount > 0) {
           const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
@@ -580,7 +583,7 @@ const RetirementCalculator = () => {
             }
           : agePensionParams;
 
-        // Estimate current Age Pension based on current portfolio
+        // Estimate current Age Pension based on current portfolio (in REAL terms)
         let estimatedAgePension = 0;
         if (includeAgePension && age >= currentPensionParams.eligibilityAge) {
           const totalAssets = mainSuper + seqBuffer + cashAccount;
@@ -605,8 +608,13 @@ const RetirementCalculator = () => {
           ? totalPensionIncome * pensionReversionary
           : totalPensionIncome;
 
-        // Calculate NET spending need (what actually comes from portfolio)
-        const totalEstimatedIncome = adjustedPensionIncome + estimatedAgePension;
+        // CRITICAL: Convert pension income to REAL TERMS to match spending
+        // adjustedPensionIncome is already inflation-adjusted (nominal), so deflate it
+        const realPensionIncome = adjustedPensionIncome / Math.pow(1 + cpiRate / 100, year - 1);
+        const realAgePension = estimatedAgePension;  // Already in real terms from calculation above
+        
+        // Calculate NET spending need (what actually comes from portfolio) - ALL IN REAL TERMS
+        const totalEstimatedIncome = realPensionIncome + realAgePension;
         const netSpendingNeed = Math.max(0, totalPlannedSpending - totalEstimatedIncome);
         
         // Compare NET withdrawal rates
@@ -1430,7 +1438,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 14.2 - In-App Quick Help</p>
+            <p className="text-gray-600">Version 14.4 - Guardrails Real/Nominal Fix</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -3178,7 +3186,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v14.2
+          Australian Retirement Planning Tool v14.4
         </div>
       </div>
     </div>
