@@ -520,7 +520,8 @@ const RetirementCalculator = () => {
       // Additional costs not subject to guardrails
       let additionalCosts = 0;
       if (healthShock && year >= 15) {
-        additionalCosts = 30000;
+        // Health shock is $30k in REAL terms, must be inflated to nominal
+        additionalCosts = 30000 * Math.pow(1 + cpiRate / 100, year - 1);
       }
       
       // Annual aged care fees (not refundable, not subject to guardrails)
