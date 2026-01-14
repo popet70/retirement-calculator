@@ -1411,7 +1411,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
+            <p className="text-gray-600">Version 14.8 - Help Section Restored</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2969,7 +2969,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.2
+          Australian Retirement Planning Tool v14.8
         </div>
       </div>
     </div>
