@@ -90,6 +90,18 @@ const RetirementCalculator = () => {
   const [partnerGender, setPartnerGender] = useState<'male' | 'female'>('female');
   const [pensionReversionary, setPensionReversionary] = useState(0.67); // PSS/CSS reversionary percentage
 
+  // Debt Repayment at Retirement
+  const [includeDebt, setIncludeDebt] = useState(false);
+  const [debts, setDebts] = useState<Array<{
+    name: string;
+    amount: number;
+    interestRate: number;
+    repaymentYears: number;
+    extraPayment: number;
+  }>>([
+    { name: 'Home Mortgage', amount: 200000, interestRate: 5.5, repaymentYears: 10, extraPayment: 0 }
+  ]);
+
   // Calculate retirement year based on current age
   const getRetirementYear = (retAge: number) => {
     const currentYear = 2026;
@@ -415,6 +427,20 @@ const RetirementCalculator = () => {
     return table[lowerBracket];
   };
 
+  // Calculate minimum annual payment for amortized loan
+  const calculateMinimumDebtPayment = (principal: number, annualRate: number, years: number): number => {
+    if (principal <= 0 || years <= 0) return 0;
+    if (annualRate === 0) return principal / years;
+    
+    const monthlyRate = annualRate / 100 / 12;
+    const numPayments = years * 12;
+    
+    const monthlyPayment = principal * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / 
+                           (Math.pow(1 + monthlyRate, numPayments) - 1);
+    
+    return monthlyPayment * 12;
+  };
+
   const runSimulation = (returnSequence: number[], cpiRate: number, healthShock: boolean, maxYears?: number) => {
     let mainSuper = mainSuperBalance;
     let seqBuffer = sequencingBuffer;
@@ -435,6 +461,16 @@ const RetirementCalculator = () => {
     // Partner survival tracking (for aged care death scenario)
     let partnerAlive = pensionRecipientType === 'couple'; // Only relevant if couple
     let spendingAdjustedForSingle = false; // Track if we've already adjusted to single
+
+    // Debt tracking (if enabled)
+    const debtBalances = includeDebt ? debts.map(d => ({
+      name: d.name,
+      balance: d.amount,
+      interestRate: d.interestRate,
+      repaymentYears: d.repaymentYears,
+      extraPayment: d.extraPayment,
+      minimumPayment: calculateMinimumDebtPayment(d.amount, d.interestRate, d.repaymentYears)
+    })) : [];
 
     for (let year = 1; year <= yearsToRun; year++) {
       const age = startAge + year - 1;
@@ -526,6 +562,31 @@ const RetirementCalculator = () => {
       
       // Annual aged care fees (not refundable, not subject to guardrails)
       additionalCosts += agedCareCosts.annualCost;
+      
+      // Debt repayment (not subject to guardrails - unavoidable commitment)
+      let totalDebtPayment = 0;
+      let totalDebtInterest = 0;
+      let totalDebtPrincipal = 0;
+      let totalDebtBalance = 0;
+      
+      if (includeDebt && debtBalances.length > 0) {
+        debtBalances.forEach(debt => {
+          if (debt.balance > 0) {
+            const interestPaid = debt.balance * (debt.interestRate / 100);
+            const payment = debt.minimumPayment + debt.extraPayment;
+            const actualPayment = Math.min(payment, debt.balance + interestPaid);
+            const principalPaid = actualPayment - interestPaid;
+            debt.balance = Math.max(0, debt.balance + interestPaid - actualPayment);
+            
+            totalDebtPayment += actualPayment;
+            totalDebtInterest += interestPaid;
+            totalDebtPrincipal += principalPaid;
+            totalDebtBalance += debt.balance;
+          }
+        });
+        
+        additionalCosts += totalDebtPayment;
+      }
       
       // RAD (Refundable Accommodation Deposit) - comes from main super as lump sum
       let radWithdrawn = 0;
@@ -706,7 +767,11 @@ const RetirementCalculator = () => {
         withdrawn, minDrawdown, superDrawnForMinimum,
         yearReturn, cpiRate, guardrailStatus, currentSpendingBase,
         inAgedCare, agedCareAnnualCost: agedCareCosts.annualCost, radWithdrawn, radRefund,
-        partnerAlive
+        partnerAlive,
+        debtBalance: totalDebtBalance,
+        debtPayment: totalDebtPayment,
+        debtInterestPaid: totalDebtInterest,
+        debtPrincipalPaid: totalDebtPrincipal
       });
 
       if (totalBalance <= 0) break;
@@ -1156,6 +1221,7 @@ const RetirementCalculator = () => {
     const hasAnyOneOffs = oneOffExpenses.length > 0 && oneOffExpenses.some(e => e.amount > 0);
     const hasSplurge = splurgeAmount > 0;
     const hasAgedCare = includeAgedCare;
+    const hasDebt = includeDebt && debts.length > 0;
     const hasPartnerTracking = pensionRecipientType === 'couple' && (includePartnerMortality || (hasAgedCare && deathInCare));
     const isJPMorgan = spendingPattern === 'jpmorgan';
     
@@ -1186,6 +1252,7 @@ const RetirementCalculator = () => {
     if (hasAnyOneOffs) headers.push('One-Off Expenses');
     if (hasHealthShock) headers.push('Health Shock Costs');
     if (hasAgedCare) headers.push('Aged Care Annual Costs');
+    if (hasDebt) headers.push('Debt Payments');
     headers.push('Total Spending');
     
     // Income calculation
@@ -1208,6 +1275,7 @@ const RetirementCalculator = () => {
     if (useGuardrails) headers.push('Guardrail Status');
     if (hasAgedCare) headers.push('In Aged Care');
     if (hasPartnerTracking) headers.push('Partner Alive');
+    if (hasDebt) headers.push('Debt Balance');
     
     let csv = headers.join(',') + '\n';
 
@@ -1239,6 +1307,10 @@ const RetirementCalculator = () => {
       const agedCareAnnual = r.agedCareAnnualCost || 0;
       const radWithdrawn = r.radWithdrawn || 0;
       const radRefunded = r.radRefund || 0;
+      
+      // Debt
+      const debtPayment = r.debtPayment || 0;
+      const debtBalance = r.debtBalance || 0;
       
       // Minimum drawdown
       const minDrawdownAmount = r.minDrawdown || 0;
@@ -1283,6 +1355,7 @@ const RetirementCalculator = () => {
       if (hasAnyOneOffs) row.push(oneOffTotal.toFixed(2));
       if (hasHealthShock) row.push(healthShockCost.toFixed(2));
       if (hasAgedCare) row.push(agedCareAnnual.toFixed(2));
+      if (hasDebt) row.push(debtPayment.toFixed(2));
       row.push(r.spending.toFixed(2));
       
       // Income
@@ -1305,6 +1378,7 @@ const RetirementCalculator = () => {
       if (useGuardrails) row.push(r.guardrailStatus || 'normal');
       if (hasAgedCare) row.push(r.inAgedCare ? 'TRUE' : 'FALSE');
       if (hasPartnerTracking) row.push(r.partnerAlive !== undefined ? (r.partnerAlive ? 'TRUE' : 'FALSE') : 'N/A');
+      if (hasDebt) row.push(debtBalance.toFixed(2));
       
       csv += row.join(',') + '\n';
     });
@@ -1336,7 +1410,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
+            <p className="text-gray-600">Version 14.8 - Debt Feature Restored</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2028,6 +2102,138 @@ const RetirementCalculator = () => {
         </div>
 
         <div className="bg-white border p-4 rounded mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xl font-bold">
+              Debt Repayment at Retirement
+              <InfoTooltip text="Model mortgages, loans, or other debts carried into retirement. Includes interest and option to pay extra principal." />
+            </h2>
+            <label className="flex items-center">
+              <input 
+                type="checkbox" 
+                checked={includeDebt} 
+                onChange={(e) => setIncludeDebt(e.target.checked)} 
+                className="mr-2" 
+              />
+              <span className="text-sm font-medium">Include Debt Repayment</span>
+            </label>
+          </div>
+          
+          {includeDebt && (
+            <div className="space-y-4">
+              {debts.map((debt, idx) => (
+                <div key={idx} className="p-4 border rounded bg-gray-50">
+                  <div className="flex justify-between items-start mb-3">
+                    <input
+                      type="text"
+                      value={debt.name}
+                      onChange={(e) => {
+                        const newDebts = [...debts];
+                        newDebts[idx].name = e.target.value;
+                        setDebts(newDebts);
+                      }}
+                      className="font-medium p-1 border rounded flex-1 mr-2"
+                      placeholder="Debt name"
+                    />
+                    <button
+                      onClick={() => setDebts(debts.filter((_, i) => i !== idx))}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm mb-1">Principal Amount</label>
+                      <input
+                        type="number"
+                        value={debt.amount}
+                        onChange={(e) => {
+                          const newDebts = [...debts];
+                          newDebts[idx].amount = Number(e.target.value);
+                          setDebts(newDebts);
+                        }}
+                        className="w-full p-2 border rounded"
+                        step="10000"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm mb-1">Interest Rate (%)</label>
+                      <input
+                        type="number"
+                        value={debt.interestRate}
+                        onChange={(e) => {
+                          const newDebts = [...debts];
+                          newDebts[idx].interestRate = Number(e.target.value);
+                          setDebts(newDebts);
+                        }}
+                        className="w-full p-2 border rounded"
+                        step="0.1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm mb-1">Repayment Period (years)</label>
+                      <input
+                        type="number"
+                        value={debt.repaymentYears}
+                        onChange={(e) => {
+                          const newDebts = [...debts];
+                          newDebts[idx].repaymentYears = Number(e.target.value);
+                          setDebts(newDebts);
+                        }}
+                        className="w-full p-2 border rounded"
+                        min="1"
+                        max="30"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm mb-1">Extra Payment ($/year)</label>
+                      <input
+                        type="number"
+                        value={debt.extraPayment}
+                        onChange={(e) => {
+                          const newDebts = [...debts];
+                          newDebts[idx].extraPayment = Number(e.target.value);
+                          setDebts(newDebts);
+                        }}
+                        className="w-full p-2 border rounded"
+                        step="1000"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-3 p-3 bg-blue-50 rounded text-sm">
+                    <div><strong>Minimum Annual Payment:</strong> {formatCurrency(calculateMinimumDebtPayment(debt.amount, debt.interestRate, debt.repaymentYears))}</div>
+                    <div><strong>Total Annual Payment:</strong> {formatCurrency(calculateMinimumDebtPayment(debt.amount, debt.interestRate, debt.repaymentYears) + debt.extraPayment)}</div>
+                  </div>
+                </div>
+              ))}
+              
+              <button
+                onClick={() => setDebts([...debts, { name: 'New Debt', amount: 100000, interestRate: 5.0, repaymentYears: 10, extraPayment: 0 }])}
+                className="w-full p-2 border-2 border-dashed border-gray-300 rounded hover:border-blue-500 hover:bg-blue-50 text-sm"
+              >
+                + Add Another Debt
+              </button>
+              
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded text-sm">
+                <div className="font-semibold mb-2">💡 Debt Strategy Notes:</div>
+                <ul className="list-disc ml-5 space-y-1 text-gray-700">
+                  <li>Debt payments are unavoidable - not subject to guardrails</li>
+                  <li>Extra payments pay down principal faster, reducing total interest</li>
+                  <li>Interest compounds annually in simulation</li>
+                  <li>Debt withdrawals come from portfolio waterfall: Cash → Buffer → Super</li>
+                  <li>Consider paying off high-interest debt before retirement if possible</li>
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white border p-4 rounded mb-6">
           <h2 className="text-xl font-bold mb-3">
             Dynamic Spending Guardrails
             <InfoTooltip text="Guyton-Klinger method: adjusts spending up/down based on portfolio performance to sustain withdrawals longer." />
@@ -2313,6 +2519,41 @@ const RetirementCalculator = () => {
               </div>
             </div>
             
+            {/* Monte Carlo Guidance Panel */}
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+              <div className="text-sm font-semibold text-blue-900 mb-2">📊 Understanding Your Results</div>
+              <div className="text-sm text-gray-700 space-y-2">
+                <div>
+                  <strong>Success Rate {monteCarloResults.successRate.toFixed(1)}%:</strong>
+                  {monteCarloResults.successRate >= 90 && " Excellent! Your plan has very high confidence."}
+                  {monteCarloResults.successRate >= 80 && monteCarloResults.successRate < 90 && " Good. Most financial advisors recommend 80%+ success rate."}
+                  {monteCarloResults.successRate >= 70 && monteCarloResults.successRate < 80 && " Moderate risk. Consider reducing spending or increasing buffer."}
+                  {monteCarloResults.successRate < 70 && " High risk. Your plan may need significant adjustments."}
+                </div>
+                
+                <div>
+                  <strong>10th Percentile ({formatCurrency(toDisplayValue(monteCarloResults.percentiles.p10, 35))}):</strong> 
+                  This is your "bad luck" scenario. Even in the worst 10% of outcomes, you'd have this much remaining.
+                  {monteCarloResults.percentiles.p10 <= 0 && " ⚠️ Some scenarios run out of money."}
+                </div>
+                
+                {monteCarloResults.failureStats && monteCarloResults.failureStats.totalFailures > 0 && (
+                  <div>
+                    <strong>Recommended Actions:</strong>
+                    <ul className="list-disc ml-5 mt-1">
+                      {monteCarloResults.failureStats.topCauses[0]?.cause === 'Early sequence risk' && (
+                        <li>Increase sequencing buffer from ${(sequencingBuffer/1000).toFixed(0)}k to ${Math.max(300, sequencingBuffer/1000 + 100).toFixed(0)}k</li>
+                      )}
+                      {monteCarloResults.successRate < 80 && (
+                        <li>Reduce base spending by 5-10% (from ${(baseSpending/1000).toFixed(0)}k to ${(baseSpending * 0.9 / 1000).toFixed(0)}k)</li>
+                      )}
+                      <li>Enable guardrails to allow dynamic spending adjustments</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+            
             {/* Failure Analysis Section */}
             {monteCarloResults.failureStats && monteCarloResults.failureStats.totalFailures > 0 && (
               <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded">
@@ -2385,6 +2626,33 @@ const RetirementCalculator = () => {
                 <div className="text-sm text-gray-600">Best Outcome</div>
                 <div className="text-2xl font-bold">{formatCurrency(toDisplayValue(historicalMonteCarloResults.percentiles.p90, 35))}</div>
                 <div className="text-xs text-gray-500 mt-1">90th percentile</div>
+              </div>
+            </div>
+            
+            {/* Historical Monte Carlo Guidance Panel */}
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded">
+              <div className="text-sm font-semibold text-blue-900 mb-2">📊 Understanding Your Historical Results</div>
+              <div className="text-sm text-gray-700 space-y-2">
+                <div>
+                  <strong>Success Rate {historicalMonteCarloResults.successRate.toFixed(1)}%:</strong>
+                  {historicalMonteCarloResults.successRate >= 90 && " Excellent! Your plan survived 90%+ of actual historical market conditions."}
+                  {historicalMonteCarloResults.successRate >= 80 && historicalMonteCarloResults.successRate < 90 && " Good. Your plan is robust against most historical crashes."}
+                  {historicalMonteCarloResults.successRate >= 70 && historicalMonteCarloResults.successRate < 80 && " Moderate. Your plan struggles in some historical scenarios like 1929 or 2008."}
+                  {historicalMonteCarloResults.successRate < 70 && " Concerning. Your plan would have failed in many actual historical periods."}
+                </div>
+                
+                <div>
+                  <strong>Worst Outcome ({formatCurrency(toDisplayValue(historicalMonteCarloResults.percentiles.p10, 35))}):</strong> 
+                  Based on actual market history, this is what happened in the worst 10% of scenarios.
+                  {historicalMonteCarloResults.percentiles.p10 <= 0 && " ⚠️ Your plan would have run out of money in some real historical periods."}
+                </div>
+                
+                {historicalMonteCarloResults.failureStats && historicalMonteCarloResults.failureStats.totalFailures > 0 && (
+                  <div>
+                    <strong>Historical Insight:</strong> These failures represent <em>actual historical sequences</em> from 1928-2025. 
+                    If you had retired at the wrong time (like 1929 or 2000), your plan would have struggled.
+                  </div>
+                )}
               </div>
             </div>
             
@@ -2599,7 +2867,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v12.2
+          Australian Retirement Planning Tool v14.8
         </div>
       </div>
     </div>
