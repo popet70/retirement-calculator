@@ -1536,7 +1536,7 @@ const RetirementCalculator = () => {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                Comprehensive 100+ page guide with examples, calculations, and detailed explanations
+                Comprehensive guide with examples, calculations, and detailed explanations
               </p>
             </div>
           </div>
