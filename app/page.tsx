@@ -1152,49 +1152,113 @@ const RetirementCalculator = () => {
       return;
     }
 
-    // CSV Header
-    let csv = 'Year,Age,Calendar Year,';
-    csv += 'Main Super Start,Buffer Start,Cash Start,Total Start,';
-    csv += 'Base Spending,Spending Multiplier,Inflation Adjusted Spending,Splurge Addition,One-Off Expenses,Health Costs,Total Spending,';
-    csv += 'Pension Income,Age Pension,Total Income,';
-    csv += 'Net Spending Need,Cash Used For Spending,Buffer Used For Spending,Super Used For Spending,Total Spent From Accounts,';
-    csv += 'Minimum Drawdown Required,Super Drawn For Min Drawdown,Min Drawdown Excess Remaining in Cash,';
-    csv += 'Return %,Main Super End,Buffer End,Cash End,Total End,';
-    csv += 'Guardrail Status,Current Spending Base\n';
+    // Determine which columns to include based on configuration
+    const hasAnyOneOffs = oneOffExpenses.length > 0 && oneOffExpenses.some(e => e.amount > 0);
+    const hasSplurge = splurgeAmount > 0;
+    const hasAgedCare = includeAgedCare;
+    const hasDebt = includeDebt && debts.length > 0;
+    const hasPartnerTracking = pensionRecipientType === 'couple' && (includePartnerMortality || (hasAgedCare && deathInCare));
+    const isJPMorgan = spendingPattern === 'jpmorgan';
+    
+    // Detect if this is a health shock scenario (check if any year has health costs)
+    const hasHealthShock = simulationResults.some((r: any, idx: number) => {
+      if (idx < 14) return false; // Health shock starts year 15
+      const spending = r.spending;
+      const expectedBase = baseSpending * Math.pow(1 + r.cpiRate / 100, r.year - 1);
+      const expectedAgedCare = r.agedCareAnnualCost || 0;
+      const expectedOneOffs = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
+      const expectedSpending = expectedBase + expectedAgedCare + expectedOneOffs;
+      return Math.abs(spending - expectedSpending) > 1000; // More than $1k difference suggests health shock
+    });
 
-    // Calculate detailed breakdown for each year
+    // Build header dynamically
+    let headers = [];
+    
+    // Core columns (always)
+    headers.push('Year', 'Age', 'Calendar Year');
+    
+    // Starting balances (always)
+    headers.push('Portfolio Start', 'Main Super Start', 'Buffer Start', 'Cash Start');
+    
+    // Spending calculation
+    headers.push('Current Spending Base (Real)');
+    if (isJPMorgan) headers.push('Spending Multiplier');
+    if (hasSplurge) headers.push('Splurge Addition');
+    if (hasAnyOneOffs) headers.push('One-Off Expenses');
+    if (hasHealthShock) headers.push('Health Shock Costs');
+    if (hasAgedCare) headers.push('Aged Care Annual Costs');
+    if (hasDebt) headers.push('Debt Payments');
+    headers.push('Total Spending');
+    
+    // Income calculation
+    if (totalPensionIncome > 0) headers.push('PSS/CSS Pension');
+    if (includeAgePension) headers.push('Age Pension');
+    headers.push('Total Income', 'Net Spending Need');
+    
+    // Withdrawals
+    headers.push('Minimum Drawdown', 'Cash Used', 'Buffer Used', 'Super Used');
+    
+    // Aged care transactions
+    if (hasAgedCare) {
+      headers.push('RAD Withdrawn', 'RAD Refunded');
+    }
+    
+    // Returns and ending balances
+    headers.push('Return %', 'Main Super End', 'Buffer End', 'Cash End', 'Portfolio End');
+    
+    // Status indicators
+    if (useGuardrails) headers.push('Guardrail Status');
+    if (hasAgedCare) headers.push('In Aged Care');
+    if (hasPartnerTracking) headers.push('Partner Alive');
+    if (hasDebt) headers.push('Debt Balance');
+    
+    let csv = headers.join(',') + '\n';
+
+    // Build data rows
     simulationResults.forEach((r: any, index: number) => {
       const calendarYear = getRetirementYear(retirementAge) + r.year - 1;
       
-      // Get previous year balances (or initial for year 1)
+      // Previous year balances
       const prevMainSuper = index === 0 ? mainSuperBalance : simulationResults[index - 1].mainSuper;
       const prevBuffer = index === 0 ? sequencingBuffer : simulationResults[index - 1].seqBuffer;
       const prevCash = index === 0 ? 0 : simulationResults[index - 1].cashAccount;
       const prevTotal = prevMainSuper + prevBuffer + prevCash;
 
       // Calculate spending components
-      const spendingMultiplier = r.year <= 10 ? Math.pow(0.982, r.year - 1) : 
-                                  r.year <= 20 ? Math.pow(0.982, 9) * Math.pow(0.986, r.year - 10) :
-                                  Math.pow(0.982, 9) * Math.pow(0.986, 10) * Math.pow(0.999, r.year - 20);
-      const inflationAdjustedSpending = baseSpending * Math.pow(1 + r.cpiRate / 100, r.year - 1);
+      const actualSpendingMultiplier = getSpendingMultiplier(r.year);
+      const currentSpendingBaseReal = r.currentSpendingBase || baseSpending;
+      
+      // Calculate splurge
       const splurgeAddition = (splurgeAmount > 0 && r.age >= splurgeStartAge && r.age <= splurgeStartAge + splurgeDuration - 1) 
                               ? splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1) : 0;
+      
+      // Calculate one-offs
       const oneOffTotal = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
-      const healthCosts = 0; // Would be 30000 if health shock enabled and year >= 15
-
-      // Use stored values from simulation results
+      
+      // Calculate health shock (if year >= 15)
+      const healthShockCost = (r.year >= 15) ? 30000 * Math.pow(1 + r.cpiRate / 100, r.year - 1) : 0;
+      
+      // Aged care costs
+      const agedCareAnnual = r.agedCareAnnualCost || 0;
+      const radWithdrawn = r.radWithdrawn || 0;
+      const radRefunded = r.radRefund || 0;
+      
+      // Debt
+      const debtPayment = r.debtPayment || 0;
+      const debtBalance = r.debtBalance || 0;
+      
+      // Minimum drawdown
       const minDrawdownAmount = r.minDrawdown || 0;
       const superForMinimum = r.superDrawnForMinimum || 0;
+      
+      // Spending withdrawals
       const netSpendingNeed = Math.max(0, r.spending - r.income);
       
-      // Calculate withdrawal breakdown
-      // After minimum drawdown goes to cash, spending waterfall is: Cash -> Buffer -> Super
+      // Calculate withdrawal breakdown (Cash → Buffer → Super waterfall)
+      const cashAvailable = prevCash + superForMinimum;
       let cashUsed = 0, bufferUsed = 0, superUsedForSpending = 0;
       
       if (netSpendingNeed > 0) {
-        // Cash available includes the minimum drawdown that just went in
-        const cashAvailable = prevCash + superForMinimum;
-        
         if (cashAvailable >= netSpendingNeed) {
           cashUsed = netSpendingNeed;
         } else {
@@ -1210,18 +1274,48 @@ const RetirementCalculator = () => {
         }
       }
       
-      const totalSuperWithdrawn = superForMinimum + superUsedForSpending;
-      const excessToCash = superForMinimum - Math.min(superForMinimum, cashUsed);
-
-      // Format row
-      csv += `${r.year},${r.age},${calendarYear},`;
-      csv += `${prevMainSuper.toFixed(2)},${prevBuffer.toFixed(2)},${prevCash.toFixed(2)},${prevTotal.toFixed(2)},`;
-      csv += `${baseSpending.toFixed(2)},${spendingMultiplier.toFixed(4)},${inflationAdjustedSpending.toFixed(2)},${splurgeAddition.toFixed(2)},${oneOffTotal.toFixed(2)},${healthCosts.toFixed(2)},${r.spending.toFixed(2)},`;
-      csv += `${(r.income - r.agePension).toFixed(2)},${r.agePension.toFixed(2)},${r.income.toFixed(2)},`;
-      csv += `${netSpendingNeed.toFixed(2)},${cashUsed.toFixed(2)},${bufferUsed.toFixed(2)},${superUsedForSpending.toFixed(2)},${(cashUsed + bufferUsed + superUsedForSpending).toFixed(2)},`;
-      csv += `${minDrawdownAmount.toFixed(2)},${superForMinimum.toFixed(2)},${excessToCash.toFixed(2)},`;
-      csv += `${r.yearReturn.toFixed(2)},${r.mainSuper.toFixed(2)},${r.seqBuffer.toFixed(2)},${r.cashAccount.toFixed(2)},${r.totalBalance.toFixed(2)},`;
-      csv += `${r.guardrailStatus || 'normal'},${r.currentSpendingBase.toFixed(2)}\n`;
+      // Build row
+      let row = [];
+      
+      // Core
+      row.push(r.year, r.age, calendarYear);
+      
+      // Starting balances
+      row.push(prevTotal.toFixed(2), prevMainSuper.toFixed(2), prevBuffer.toFixed(2), prevCash.toFixed(2));
+      
+      // Spending calculation
+      row.push(currentSpendingBaseReal.toFixed(2));
+      if (isJPMorgan) row.push(actualSpendingMultiplier.toFixed(4));
+      if (hasSplurge) row.push(splurgeAddition.toFixed(2));
+      if (hasAnyOneOffs) row.push(oneOffTotal.toFixed(2));
+      if (hasHealthShock) row.push(healthShockCost.toFixed(2));
+      if (hasAgedCare) row.push(agedCareAnnual.toFixed(2));
+      if (hasDebt) row.push(debtPayment.toFixed(2));
+      row.push(r.spending.toFixed(2));
+      
+      // Income
+      if (totalPensionIncome > 0) row.push((r.pensionIncome || 0).toFixed(2));
+      if (includeAgePension) row.push((r.agePension || 0).toFixed(2));
+      row.push(r.income.toFixed(2), netSpendingNeed.toFixed(2));
+      
+      // Withdrawals
+      row.push(minDrawdownAmount.toFixed(2), cashUsed.toFixed(2), bufferUsed.toFixed(2), superUsedForSpending.toFixed(2));
+      
+      // Aged care transactions
+      if (hasAgedCare) {
+        row.push(radWithdrawn.toFixed(2), radRefunded.toFixed(2));
+      }
+      
+      // Returns and ending balances
+      row.push(r.yearReturn.toFixed(2), r.mainSuper.toFixed(2), r.seqBuffer.toFixed(2), r.cashAccount.toFixed(2), r.totalBalance.toFixed(2));
+      
+      // Status
+      if (useGuardrails) row.push(r.guardrailStatus || 'normal');
+      if (hasAgedCare) row.push(r.inAgedCare ? 'TRUE' : 'FALSE');
+      if (hasPartnerTracking) row.push(r.partnerAlive !== undefined ? (r.partnerAlive ? 'TRUE' : 'FALSE') : 'N/A');
+      if (hasDebt) row.push(debtBalance.toFixed(2));
+      
+      csv += row.join(',') + '\n';
     });
 
     // Download
@@ -1229,12 +1323,21 @@ const RetirementCalculator = () => {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `retirement_simulation_detailed_${new Date().toISOString().split('T')[0]}.csv`;
+    
+    // Generate descriptive filename
+    const scenarioName = useMonteCarlo ? 'MonteCarlo' : 
+                         useHistoricalMonteCarlo ? 'HistoricalMC' :
+                         useFormalTest ? (selectedFormalTest || 'FormalTest') :
+                         useHistoricalData ? historicalLabels[historicalPeriod as keyof typeof historicalLabels].replace(/[^a-zA-Z0-9]/g, '') :
+                         `Return${selectedScenario}pct`;
+    
+    a.download = `retirement_${scenarioName}_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   };
+
 
   return (
     <div className="max-w-6xl mx-auto p-6 bg-gray-50">
