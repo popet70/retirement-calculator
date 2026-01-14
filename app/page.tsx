@@ -1156,7 +1156,6 @@ const RetirementCalculator = () => {
     const hasAnyOneOffs = oneOffExpenses.length > 0 && oneOffExpenses.some(e => e.amount > 0);
     const hasSplurge = splurgeAmount > 0;
     const hasAgedCare = includeAgedCare;
-    const hasDebt = includeDebt && debts.length > 0;
     const hasPartnerTracking = pensionRecipientType === 'couple' && (includePartnerMortality || (hasAgedCare && deathInCare));
     const isJPMorgan = spendingPattern === 'jpmorgan';
     
@@ -1187,7 +1186,6 @@ const RetirementCalculator = () => {
     if (hasAnyOneOffs) headers.push('One-Off Expenses');
     if (hasHealthShock) headers.push('Health Shock Costs');
     if (hasAgedCare) headers.push('Aged Care Annual Costs');
-    if (hasDebt) headers.push('Debt Payments');
     headers.push('Total Spending');
     
     // Income calculation
@@ -1210,7 +1208,6 @@ const RetirementCalculator = () => {
     if (useGuardrails) headers.push('Guardrail Status');
     if (hasAgedCare) headers.push('In Aged Care');
     if (hasPartnerTracking) headers.push('Partner Alive');
-    if (hasDebt) headers.push('Debt Balance');
     
     let csv = headers.join(',') + '\n';
 
@@ -1242,10 +1239,6 @@ const RetirementCalculator = () => {
       const agedCareAnnual = r.agedCareAnnualCost || 0;
       const radWithdrawn = r.radWithdrawn || 0;
       const radRefunded = r.radRefund || 0;
-      
-      // Debt
-      const debtPayment = r.debtPayment || 0;
-      const debtBalance = r.debtBalance || 0;
       
       // Minimum drawdown
       const minDrawdownAmount = r.minDrawdown || 0;
@@ -1290,7 +1283,6 @@ const RetirementCalculator = () => {
       if (hasAnyOneOffs) row.push(oneOffTotal.toFixed(2));
       if (hasHealthShock) row.push(healthShockCost.toFixed(2));
       if (hasAgedCare) row.push(agedCareAnnual.toFixed(2));
-      if (hasDebt) row.push(debtPayment.toFixed(2));
       row.push(r.spending.toFixed(2));
       
       // Income
@@ -1313,7 +1305,6 @@ const RetirementCalculator = () => {
       if (useGuardrails) row.push(r.guardrailStatus || 'normal');
       if (hasAgedCare) row.push(r.inAgedCare ? 'TRUE' : 'FALSE');
       if (hasPartnerTracking) row.push(r.partnerAlive !== undefined ? (r.partnerAlive ? 'TRUE' : 'FALSE') : 'N/A');
-      if (hasDebt) row.push(debtBalance.toFixed(2));
       
       csv += row.join(',') + '\n';
     });
