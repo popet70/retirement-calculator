@@ -200,7 +200,20 @@ const RetirementCalculator = () => {
     }
   }, [useMonteCarlo, useHistoricalMonteCarlo, includeAgedCare, agedCareApproach]);
 
-
+ // Clear Monte Carlo results when key parameters change to force re-run
+  // This ensures charts update when you change settings
+  useEffect(() => {
+    if (monteCarloResults !== null || historicalMonteCarloResults !== null) {
+      setMonteCarloResults(null);
+      setHistoricalMonteCarloResults(null);
+    }
+  }, [mainSuperBalance, sequencingBuffer, baseSpending, includeAgedCare, agedCareApproach, 
+      deterministicAgedCareAge, agedCareDuration, agedCareRAD, agedCareAnnualCost,
+      includeDebt, debts, useGuardrails, includeAgePension, totalPensionIncome,
+      splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses, 
+      upperGuardrail, lowerGuardrail, guardrailAdjustment, pensionRecipientType,
+      includePartnerMortality, partnerAge, deathInCare, personAtHomeSpending]);
+  
   const runFormalTests = () => {
     const results: any = {};
     Object.keys(formalTests).forEach((key: string) => {
