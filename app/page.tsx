@@ -35,6 +35,7 @@ const RetirementCalculator = () => {
   const [lowerGuardrail, setLowerGuardrail] = useState(15);
   const [guardrailAdjustment, setGuardrailAdjustment] = useState(10);
   const [showNominalDollars, setShowNominalDollars] = useState(false);
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
   const [inflationRate, setInflationRate] = useState(2.5);
   const [useHistoricalData, setUseHistoricalData] = useState(false);
   const [useMonteCarlo, setUseMonteCarlo] = useState(false);
@@ -1410,7 +1411,7 @@ const RetirementCalculator = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 14.8 - Debt Feature Restored</p>
+            <p className="text-gray-600">Version 12.2 - Aged Care Guardrails Fix</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -1432,6 +1433,12 @@ const RetirementCalculator = () => {
               {showNominalDollars ? 'Future dollar amounts' : 'Retirement year purchasing power'}
             </p>
             <button 
+              onClick={() => setShowHelpPanel(!showHelpPanel)}
+              className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 mb-2"
+            >
+              {showHelpPanel ? '📖 Hide Help' : '📖 Quick Help'}
+            </button>
+            <button 
               onClick={exportDetailedCSV}
               className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
             >
@@ -1439,6 +1446,101 @@ const RetirementCalculator = () => {
             </button>
           </div>
         </div>
+        
+        {showHelpPanel && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              📖 Quick Help Guide
+              <button 
+                onClick={() => setShowHelpPanel(false)}
+                className="ml-auto text-sm px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded"
+              >
+                ✕ Close
+              </button>
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-blue-700">🎯 Getting Started</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Main Super:</strong> Your growth assets earning variable returns</li>
+                  <li><strong>Sequencing Buffer:</strong> 3-5 years defensive cash (optional)</li>
+                  <li><strong>PSS/CSS Pension:</strong> Defined benefit pension income</li>
+                  <li><strong>Age Pension:</strong> Government payment (asset/income tested)</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-green-700">📊 Test Scenarios</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Constant Return:</strong> Simple baseline planning</li>
+                  <li><strong>Historical:</strong> Test against GFC, COVID, 1929, etc.</li>
+                  <li><strong>Monte Carlo:</strong> Run 1000s of random scenarios</li>
+                  <li><strong>Success Rate 90%+:</strong> ✅ Very safe plan</li>
+                  <li><strong>Success Rate 80-89%:</strong> ✅ Acceptable risk</li>
+                  <li><strong>Success Rate &lt;70%:</strong> ⚠️ Consider adjustments</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-purple-700">🛡️ Guardrails</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Dynamic spending:</strong> Adjusts based on portfolio performance</li>
+                  <li><strong>Increase spending:</strong> When portfolio doing well</li>
+                  <li><strong>Decrease spending:</strong> When portfolio struggling</li>
+                  <li><strong>Floor protection:</strong> Never below pension income</li>
+                  <li><strong>Recommended:</strong> Enable for realistic planning</li>
+                </ul>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow">
+                <h3 className="font-bold text-lg mb-2 text-orange-700">🏥 Advanced Features</h3>
+                <ul className="text-sm space-y-1 text-gray-700">
+                  <li><strong>Aged Care:</strong> Model RAD + annual fees (~30% use)</li>
+                  <li><strong>Partner Mortality:</strong> Probabilistic death modeling</li>
+                  <li><strong>Debt Repayment:</strong> Multiple loans with extra payments</li>
+                  <li><strong>One-Off Expenses:</strong> Major expenses at specific ages</li>
+                  <li><strong>Splurge Spending:</strong> Extra spending for travel years</li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-sm text-gray-700">
+                <strong>💡 Tip:</strong> Start simple with Constant Return, then test robustness with Monte Carlo. 
+                Enable Guardrails for realistic spending adjustments. Use Historical MC to see how your plan would have 
+                performed during actual market crashes (1929, 2008, etc.). Success rate 80%+ is generally recommended by financial advisors.
+              </p>
+            </div>
+            
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Need more detail?</strong> Full documentation covers all features, calculations, and examples.
+              </p>
+              <div className="flex gap-2 justify-center">
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_8.pdf', '_blank');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+                >
+                  📥 Download PDF Guide
+                </button>
+                <button 
+                  onClick={() => {
+                    window.open('https://github.com/popet70/retirement-calculator/raw/main/docs/Retirement_Calculator_User_Guide_v14_8.docx', '_blank');
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium"
+                >
+                  📥 Download Word Guide
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Comprehensive 100+ page guide with examples, calculations, and detailed explanations
+              </p>
+            </div>
+          </div>
+        )}
         
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
           <h2 className="text-xl font-bold mb-3">Initial Situation</h2>
@@ -2867,7 +2969,7 @@ const RetirementCalculator = () => {
         )}
 
         <div className="text-center text-sm text-gray-600 mt-6">
-          Australian Retirement Planning Tool v14.8
+          Australian Retirement Planning Tool v12.2
         </div>
       </div>
     </div>
