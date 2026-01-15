@@ -74,12 +74,14 @@ const RetirementCalculator = () => {
   
   // Disclaimer
   const [termsAcknowledged, setTermsAcknowledged] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
     const accepted = localStorage.getItem('termsAcknowledged');
     if (accepted === 'true') {
       setTermsAcknowledged(true);
     }
+    setIsMounted(true);
   }, []);
 
   const acknowledgeTerms = () => {
@@ -1433,7 +1435,10 @@ const RetirementCalculator = () => {
     window.URL.revokeObjectURL(url);
   };
 
-
+if (!isMounted) {
+  return null;
+}
+  
   return (
     <div className="max-w-6xl mx-auto p-6 bg-gray-50">
 
