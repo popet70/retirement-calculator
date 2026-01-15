@@ -1536,7 +1536,7 @@ if (!isMounted) {
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
-            <div className="flex gap-2 mb-2">
+            <div className="flex justify-end gap-2 mb-2">
               <button 
                 onClick={() => setShowNominalDollars(false)} 
                 className={'px-4 py-2 rounded text-sm font-medium ' + (!showNominalDollars ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700')}
