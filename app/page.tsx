@@ -76,6 +76,7 @@ const RetirementCalculator = () => {
   const [termsAcknowledged, setTermsAcknowledged] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const TERMS_VERSION = 'v1.0';
+  const [showTerms, setShowTerms] = useState(false);
 
   
   useEffect(() => {
@@ -1444,7 +1445,7 @@ if (!isMounted) {
   return (
     <div className="max-w-6xl mx-auto p-6 bg-gray-50">
 
-    {!termsAcknowledged && (
+    {(!termsAcknowledged || showTerms) && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
         <div className="bg-white max-w-3xl w-full mx-4 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
           <h2 className="text-xl font-semibold mb-4">
@@ -1497,7 +1498,8 @@ if (!isMounted) {
           </p>
         </div>
 
-        <div className="mt-6 flex items-center gap-3">
+        {!termsAcknowledged && (
+          <div className="mt-6 flex items-center gap-3">
           <input
             id="acknowledge"
             type="checkbox"
@@ -1508,6 +1510,18 @@ if (!isMounted) {
             I have read and acknowledge the Disclaimer and Terms of Use
           </label>
         </div>
+        )}
+          {/* Close button — only when reopening after acceptance */}
+          {termsAcknowledged && (
+           <div className="mt-6 text-right">
+            <button
+              onClick={() => setShowTerms(false)}
+              className="px-4 py-2 bg-gray-200 rounded text-sm"
+            >
+            Close
+         </button>
+      </div>
+    )}
       </div>
     </div>
   )}
@@ -3082,8 +3096,15 @@ if (!isMounted) {
           >
             Contact
           </a>
+          <button
+            onClick={() => setShowTerms(true)}
+            className="text-xs underline text-gray-500"
+          >
+            View Disclaimer & Terms
+          </button>
         </div>
-
+        
+       
       </div>
     </div>
   );
