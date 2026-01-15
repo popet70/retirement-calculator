@@ -78,6 +78,7 @@ const RetirementCalculator = () => {
   const TERMS_VERSION = 'v1.0';
   const [showTerms, setShowTerms] = useState(false);
 
+  const [showAssumptions, setShowAssumptions] = useState(false);
   
   useEffect(() => {
     const accepted = localStorage.getItem(`termsAccepted_${TERMS_VERSION}`);
@@ -1558,6 +1559,13 @@ if (!isMounted) {
             >
               {showHelpPanel ? '📖 Hide Help' : '📖 Quick Help'}
             </button>
+            <button
+              onClick={() => setShowAssumptions(!showAssumptions)}
+              className="w-full px-3 py-2 bg-gray-200 text-gray-800 rounded text-sm font-medium mb-2"
+            >
+             📑 Key Assumptions
+            </button>
+
             <button 
               onClick={exportDetailedCSV}
               className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
@@ -1566,6 +1574,21 @@ if (!isMounted) {
             </button>
           </div>
         </div>
+
+        {showAssumptions && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded text-sm text-gray-800">
+          <h3 className="font-semibold mb-2">Key Assumptions</h3>
+          <ul className="list-disc ml-5 space-y-1">
+            <li>All outputs are illustrative only and do not constitute financial advice.</li>
+            <li>Investment returns are assumed annually and may not reflect real-world sequencing.</li>
+            <li>Inflation is user-defined and assumed constant unless otherwise specified.</li>
+            <li>Mortality and aged care modelling are simplified and indicative only.</li>
+            <li>No taxation, contribution caps, or legislative changes are modelled.</li>
+            <li>Past performance is not indicative of future results.</li>
+          </ul>
+         </div>
+        )}
+
         
         {showHelpPanel && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-6 mb-6">
