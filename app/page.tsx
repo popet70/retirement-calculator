@@ -1590,7 +1590,7 @@ if (!isMounted) {
             </div>
 
           <ul className="list-disc ml-5 space-y-1">
-            <li>Yhis tool does not provide financial, tax, or retirement advice and does not consider your personal circumstances.</li>
+            <li>This tool does not provide financial, tax, or retirement advice and does not consider your personal circumstances.</li>
             <li>Investment returns are scenario-based assumptions, not forecasts or guarantees.</li>
             <li>Inflation follows user or scenario inputs and may differ from future cost-of-living outcomes.</li>
             <li>Life expectancy and partner survival are modelled using simplified assumptions, not actuarial tables.</li>
