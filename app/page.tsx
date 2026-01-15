@@ -1590,12 +1590,14 @@ if (!isMounted) {
             </div>
 
           <ul className="list-disc ml-5 space-y-1">
-            <li>All outputs are illustrative only and do not constitute financial advice.</li>
-            <li>Investment returns are assumed annually and may not reflect real-world sequencing.</li>
-            <li>Inflation is user-defined and assumed constant unless otherwise specified.</li>
-            <li>Mortality and aged care modelling are simplified and indicative only.</li>
-            <li>No taxation, contribution caps, or legislative changes are modelled.</li>
-            <li>Past performance is not indicative of future results.</li>
+            <li>Yhis tool does not provide financial, tax, or retirement advice and does not consider your personal circumstances.</li>
+            <li>Investment returns are scenario-based assumptions, not forecasts or guarantees.</li>
+            <li>Inflation follows user or scenario inputs and may differ from future cost-of-living outcomes.</li>
+            <li>Life expectancy and partner survival are modelled using simplified assumptions, not actuarial tables.</li>
+            <li>All calculations use annual time steps; intra-year cash-flow timing is not modelled</li>
+            <li>Balances are drawn using predefined spending and withdrawal hierarchies that affect outcomes.</li>
+            <li>Taxation, super rules, and government benefits are simplified and assume broadly stable legislation.</li>
+            <li>Historical data, Monte Carlo simulations, and stress tests are illustrative and not predictive.</li>
           </ul>
          </div>
         )}
