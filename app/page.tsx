@@ -71,6 +71,21 @@ const RetirementCalculator = () => {
   const [currentAge, setCurrentAge] = useState(55);
   const [retirementAge, setRetirementAge] = useState(60);
   const [pensionRecipientType, setPensionRecipientType] = useState<'single' | 'couple'>('couple');
+
+  const [termsAcknowledged, setTermsAcknowledged] = useState(false);
+
+  useEffect(() => {
+    const accepted = localStorage.getItem('termsAcknowledged');
+    if (accepted === 'true') {
+      setTermsAcknowledged(true);
+    }
+  }, []);
+
+  const acknowledgeTerms = () => {
+    localStorage.setItem('termsAcknowledged', 'true');
+    setTermsAcknowledged(true);
+  };
+
   
   // Aged Care Configuration
   const [includeAgedCare, setIncludeAgedCare] = useState(false);
@@ -1420,11 +1435,265 @@ const RetirementCalculator = () => {
 
   return (
     <div className="max-w-6xl mx-auto p-6 bg-gray-50">
+      {!termsAcknowledged && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+    <div className="bg-white max-w-3xl w-full mx-4 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+      <h2 className="text-xl font-semibold mb-4">
+        Disclaimer and Terms of Use
+      </h2>
+
+      <div className="text-sm text-gray-700 space-y-3">
+        <p>
+          This retirement calculator is provided for <strong>general information
+          and educational purposes only</strong>. It does not constitute
+          financial, investment, tax, superannuation, or retirement advice.
+        </p>
+
+        <p>
+          The calculator does not take into account your personal objectives,
+          financial situation, or needs. You should consider seeking advice from
+          a licensed financial adviser before making any financial decisions.
+        </p>
+
+        <p>
+          All outputs are <strong>illustrative only</strong> and are based on
+          user-selected inputs and stated assumptions. Actual outcomes may differ
+          materially.
+        </p>
+
+        <p>
+          This tool is provided “as is”, without warranty of any kind. To the
+          maximum extent permitted by law, the creator disclaims all liability
+          for any loss or damage arising from use of, or reliance on, this tool.
+        </p>
+
+        <p>
+          This calculator does not intentionally collect or store personally
+          identifiable information. Any usage analytics, if enabled, are used
+          solely to improve functionality.
+        </p>
+
+        <p>
+          These terms are governed by the laws of Australia.
+        </p>
+
+        <p className="pt-2">
+          Contact:{' '}
+          <a
+            href="mailto:aust-retirement-calculator@proton.me"
+            className="text-blue-600 underline"
+          >
+            aust-retirement-calculator@proton.me
+          </a>
+        </p>
+      </div>
+
+      <div className="mt-6 flex items-center gap-3">
+        <input
+          id="acknowledge"
+          type="checkbox"
+          className="h-4 w-4"
+          onChange={acknowledgeTerms}
+        />
+        <label htmlFor="acknowledge" className="text-sm text-gray-800">
+          I have read and acknowledge the Disclaimer and Terms of Use
+        </label>
+      </div>
+    </div>
+  </div>
+)}
+       
+      // Build row
+      let row = [];
+      
+      // Core
+      row.push(r.year, r.age, calendarYear);
+      
+      // Starting balances
+      row.push(prevTotal.toFixed(2), prevMainSuper.toFixed(2), prevBuffer.toFixed(2), prevCash.toFixed(2));
+      
+      // Spending calculation
+      row.push(currentSpendingBaseReal.toFixed(2));
+      if (isJPMorgan) row.push(actualSpendingMultiplier.toFixed(4));
+      if (hasSplurge) row.push(splurgeAddition.toFixed(2));
+      if (hasAnyOneOffs) row.push(oneOffTotal.toFixed(2));
+      if (hasHealthShock) row.push(healthShockCost.toFixed(2));
+      if (hasAgedCare) row.push(agedCareAnnual.toFixed(2));
+      if (hasDebt) row.push(debtPayment.toFixed(2));
+      row.push(r.spending.toFixed(2));
+      
+      // Income
+      if (totalPensionIncome > 0) row.push((r.pensionIncome || 0).toFixed(2));
+      if (includeAgePension) row.push((r.agePension || 0).toFixed(2));
+      row.push(r.income.toFixed(2), netSpendingNeed.toFixed(2));
+      
+      // Withdrawals
+      row.push(minDrawdownAmount.toFixed(2), cashUsed.toFixed(2), bufferUsed.toFixed(2), superUsedForSpending.toFixed(2));
+      
+      // Aged care transactions
+      if (hasAgedCare) {
+        row.push(radWithdrawn.toFixed(2), radRefunded.toFixed(2));
+      }
+      
+      // Returns and ending balances
+      row.push(r.yearReturn.toFixed(2), r.mainSuper.toFixed(2), r.seqBuffer.toFixed(2), r.cashAccount.toFixed(2), r.totalBalance.toFixed(2));
+      
+      // Status
+      if (useGuardrails) row.push(r.guardrailStatus || 'normal');
+      if (hasAgedCare) row.push(r.inAgedCare ? 'TRUE' : 'FALSE');
+      if (hasPartnerTracking) row.push(r.partnerAlive !== undefined ? (r.partnerAlive ? 'TRUE' : 'FALSE') : 'N/A');
+      if (hasDebt) row.push(debtBalance.toFixed(2));
+      
+      csv += row.join(',') + '\n';
+    });
+
+    // Download
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    // Generate descriptive filename
+    const scenarioName = useMonteCarlo ? 'MonteCarlo' : 
+                         useHistoricalMonteCarlo ? 'HistoricalMC' :
+                         useFormalTest ? (selectedFormalTest || 'FormalTest') :
+                         useHistoricalData ? historicalLabels[historicalPeriod as keyof typeof historicalLabels].replace(/[^a-zA-Z0-9]/g, '') :
+                         `Return${selectedScenario}pct`;
+    
+    a.download = `retirement_${scenarioName}_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 bg-gray-50">
+      {!termsAcknowledged && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70">
+    <div className="bg-white max-w-3xl w-full mx-4 p-6 rounded-lg shadow-xl overflow-y-auto max-h-[90vh]">
+      <h2 className="text-xl font-semibold mb-4">
+        Disclaimer and Terms of Use
+      </h2>
+
+      <div className="text-sm text-gray-700 space-y-3">
+        <p>
+          This retirement calculator is provided for <strong>general information
+          and educational purposes only</strong>. It does not constitute
+          financial, investment, tax, superannuation, or retirement advice.
+        </p>
+
+        <p>
+          The calculator does not take into account your personal objectives,
+          financial situation, or needs. You should consider seeking advice from
+          a licensed financial adviser before making any financial decisions.
+        </p>
+
+        <p>
+          All outputs are <strong>illustrative only</strong> and are based on
+          user-selected inputs and stated assumptions. Actual outcomes may differ
+          materially.
+        </p>
+
+        <p>
+          This tool is provided “as is”, without warranty of any kind. To the
+          maximum extent permitted by law, the creator disclaims all liability
+          for any loss or damage arising from use of, or reliance on, this tool.
+        </p>
+
+        <p>
+          This calculator does not intentionally collect or store personally
+          identifiable information. Any usage analytics, if enabled, are used
+          solely to improve functionality.
+        </p>
+
+        <p>
+          These terms are governed by the laws of Australia.
+        </p>
+
+        <p className="pt-2">
+          Contact:{' '}
+          <a
+            href="mailto:aust-retirement-calculator@proton.me"
+            className="text-blue-600 underline"
+          >
+            aust-retirement-calculator@proton.me
+          </a>
+        </p>
+      </div>
+
+      <div className="mt-6 flex items-center gap-3">
+        <input
+          id="acknowledge"
+          type="checkbox"
+          className="h-4 w-4"
+          onChange={acknowledgeTerms}
+        />
+        <label htmlFor="acknowledge" className="text-sm text-gray-800">
+          I have read and acknowledge the Disclaimer and Terms of Use
+        </label>
+      </div>
+    </div>
+  </div>
+)}
+
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex justify-between items-start mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 14.8 - Help Section Restored</p>
+          <div className="text-center text-sm text-gray-600 mt-6">
+             Australian Retirement Planning Tool v14.8 ·{' '}
+             <a
+             href="mailto:aust-retirement-calculator@proton.me"
+             className="underline"
+               >
+              Contact
+            </a>
+          </div>
+          <div className="text-right">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
+            <div className="flex gap-2 mb-2">
+              <button 
+                onClick={() => setShowNominalDollars(false)} 
+                className={'px-4 py-2 rounded text-sm font-medium ' + (!showNominalDollars ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700')}
+              >
+                Real {getRetirementYear(retirementAge)} $
+              </button>
+              <button 
+                onClick={() => setShowNominalDollars(true)} 
+                className={'px-4 py-2 rounded text-sm font-medium ' + (showNominalDollars ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700')}
+              >
+                Nominal $
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">
+              {showNominalDollars ? 'Future dollar amounts' : 'Retirement year purchasing power'}
+            </p>
+            <button 
+              onClick={() => setShowHelpPanel(!showHelpPanel)}
+              className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 mb-2"
+            >
+              {showHelpPanel ? '📖 Hide Help' : '📖 Quick Help'}
+            </button>
+            <button 
+              onClick={exportDetailedCSV}
+              className="w-full px-3 py-2 bg-green-600 text-white rounded text-sm font-medium hover:bg-green-700"
+            >
+              📊 Export Detailed CSV
+            </button>
+          </div>
+        </div>
+        
+
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div className="text-center text-sm text-gray-600 mt-6">
+             Australian Retirement Planning Tool v14.8 ·{' '}
+             <a
+             href="mailto:aust-retirement-calculator@proton.me"
+             className="underline"
+               >
+              Contact
+            </a>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
