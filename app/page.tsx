@@ -3100,7 +3100,7 @@ if (!isMounted) {
             onClick={() => setShowTerms(true)}
             className="text-xs underline text-gray-500"
           >
-            View Disclaimer & Terms
+              View Disclaimer & Terms
           </button>
         </div>
         
