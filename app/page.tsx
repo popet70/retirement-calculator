@@ -1577,7 +1577,18 @@ if (!isMounted) {
 
         {showAssumptions && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded text-sm text-gray-800">
-          <h3 className="font-semibold mb-2">Key Assumptions</h3>
+    
+            <div className="flex justify-between items-start mb-2">
+              <h3 className="font-semibold">Key Assumptions</h3>
+              <button
+                onClick={() => setShowAssumptions(false)}
+                className="text-gray-500 hover:text-gray-700 text-sm"
+                aria-label="Close assumptions"
+              >
+               ✕
+             </button>
+            </div>
+
           <ul className="list-disc ml-5 space-y-1">
             <li>All outputs are illustrative only and do not constitute financial advice.</li>
             <li>Investment returns are assumed annually and may not reflect real-world sequencing.</li>
