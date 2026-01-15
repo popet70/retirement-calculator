@@ -75,9 +75,11 @@ const RetirementCalculator = () => {
   // Disclaimer
   const [termsAcknowledged, setTermsAcknowledged] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const TERMS_VERSION = 'v1.0';
 
+  
   useEffect(() => {
-    const accepted = localStorage.getItem('termsAcknowledged');
+    const accepted = localStorage.getItem(`termsAccepted_${TERMS_VERSION}`);
     if (accepted === 'true') {
       setTermsAcknowledged(true);
     }
@@ -85,7 +87,7 @@ const RetirementCalculator = () => {
   }, []);
 
   const acknowledgeTerms = () => {
-    localStorage.setItem('termsAcknowledged', 'true');
+    localStorage.setItem(`termsAccepted_${TERMS_VERSION}`, 'true');
     setTermsAcknowledged(true);
   };
 
