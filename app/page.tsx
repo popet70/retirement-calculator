@@ -50,6 +50,7 @@ const RetirementCalculator = () => {
   const [splurgeAmount, setSplurgeAmount] = useState(0);
   const [splurgeStartAge, setSplurgeStartAge] = useState(65);
   const [splurgeDuration, setSplurgeDuration] = useState(5);
+  const [splurgeRampDownYears, setSplurgeRampDownYears] = useState(0);
   const [oneOffExpenses, setOneOffExpenses] = useState([
     { description: 'Major Appliance Replacement', age: 64, amount: 12000 },
     { description: 'Technology Refresh', age: 62, amount: 5000 },
@@ -232,7 +233,7 @@ const RetirementCalculator = () => {
   }, [mainSuperBalance, sequencingBuffer, baseSpending, includeAgedCare, agedCareApproach, 
       deterministicAgedCareAge, agedCareDuration, agedCareRAD, agedCareAnnualCost,
       includeDebt, debts, useGuardrails, includeAgePension, totalPensionIncome,
-      splurgeAmount, splurgeStartAge, splurgeDuration, oneOffExpenses, 
+      splurgeAmount, splurgeStartAge, splurgeDuration, splurgeRampDownYears, oneOffExpenses, 
       upperGuardrail, lowerGuardrail, guardrailAdjustment, pensionRecipientType,
       includePartnerMortality, partnerAge, deathInCare, personAtHomeSpending]);
   
@@ -303,24 +304,43 @@ const RetirementCalculator = () => {
     }
   };
 
-  const splurgeSummary = useMemo(() => {
+   const splurgeSummary = useMemo(() => {
     if (splurgeAmount === 0) {
-      return { enabled: false, message: "Set splurge amount above $0 to activate", totalSplurge: 0, activePeriod: '', annualImpact: '' };
+      return { 
+        enabled: false, 
+        message: "Set splurge amount above $0 to activate", 
+        totalSplurge: 0, 
+        activePeriod: '', 
+        annualImpact: '',
+        rampDownPeriod: '',
+        totalWithRampDown: 0
+      };
     }
     
     const totalSplurge = splurgeAmount * splurgeDuration;
     const endAge = splurgeStartAge + splurgeDuration - 1;
+    const rampDownEndAge = endAge + splurgeRampDownYears;
     const startYear = getRetirementYear(retirementAge) + (splurgeStartAge - retirementAge);
     const endYear = startYear + splurgeDuration - 1;
+    const rampDownEndYear = endYear + splurgeRampDownYears;
     const combinedSpending = baseSpending + splurgeAmount;
+    
+    // Calculate total ramp-down spending (triangular sum: average * years)
+    const rampDownTotal = splurgeRampDownYears > 0 
+      ? (splurgeAmount * splurgeRampDownYears) / 2 
+      : 0;
     
     return {
       enabled: true,
       totalSplurge,
       activePeriod: `Age ${splurgeStartAge} to ${endAge} (${startYear}-${endYear})`,
-      annualImpact: `Combined spending ${formatCurrency(combinedSpending)}/year`
+      annualImpact: `Combined spending ${formatCurrency(combinedSpending)}/year`,
+      rampDownPeriod: splurgeRampDownYears > 0 
+        ? `Ramp-down age ${endAge + 1} to ${rampDownEndAge} (${endYear + 1}-${rampDownEndYear})` 
+        : '',
+      totalWithRampDown: totalSplurge + rampDownTotal
     };
-  }, [splurgeAmount, splurgeStartAge, splurgeDuration, baseSpending, retirementAge, currentAge]);
+  }, [splurgeAmount, splurgeStartAge, splurgeDuration, splurgeRampDownYears, baseSpending, retirementAge, currentAge]);
 
   const getSpendingMultiplier = (year: number) => {
     if (spendingPattern === 'cpi') {
@@ -581,10 +601,20 @@ const RetirementCalculator = () => {
       // Add splurge to base if within the splurge period (in real terms)
       if (splurgeAmount > 0) {
         const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+        const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
+        
         if (age >= splurgeStartAge && age <= splurgeEndAge) {
+          // Full splurge period
           realBaseSpending += splurgeAmount;
+        } else if (splurgeRampDownYears > 0 && age > splurgeEndAge && age <= rampDownEndAge) {
+          // Ramp-down period - linear decline from splurgeAmount to 0
+          const yearsIntoRampDown = age - splurgeEndAge;
+          const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
+          const rampDownAmount = splurgeAmount * rampDownFraction;
+          realBaseSpending += rampDownAmount;
         }
       }
+
       
       // Now inflate this combined base to nominal terms
       const inflationAdjustedSpending = realBaseSpending * Math.pow(1 + cpiRate / 100, year - 1);
@@ -1329,9 +1359,24 @@ const RetirementCalculator = () => {
       const actualSpendingMultiplier = getSpendingMultiplier(r.year);
       const currentSpendingBaseReal = r.currentSpendingBase || baseSpending;
       
-      // Calculate splurge
-      const splurgeAddition = (splurgeAmount > 0 && r.age >= splurgeStartAge && r.age <= splurgeStartAge + splurgeDuration - 1) 
-                              ? splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1) : 0;
+     // Calculate splurge with ramp-down
+      let splurgeAddition = 0;
+      if (splurgeAmount > 0) {
+        const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+        const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
+        
+        if (r.age >= splurgeStartAge && r.age <= splurgeEndAge) {
+          // Full splurge period
+          splurgeAddition = splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1);
+        } else if (splurgeRampDownYears > 0 && r.age > splurgeEndAge && r.age <= rampDownEndAge) {
+          // Ramp-down period
+          const yearsIntoRampDown = r.age - splurgeEndAge;
+          const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
+          const rampDownAmount = splurgeAmount * rampDownFraction;
+          splurgeAddition = rampDownAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1);
+        }
+      }
+
       
       // Calculate one-offs
       const oneOffTotal = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
@@ -1532,7 +1577,7 @@ if (!isMounted) {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">Australian Retirement Planning Tool</h1>
-            <p className="text-gray-600">Version 14.8 - Help Section Restored</p>
+            <p className="text-gray-600">Version 14.9 - Splurge Ramp-Down Feature</p>
           </div>
           <div className="text-right">
             <label className="block text-sm font-medium text-gray-700 mb-2">Display Values</label>
@@ -2022,14 +2067,52 @@ if (!isMounted) {
                   className="w-full" 
                 />
               </div>
+
+               <div>
+                <label className="block text-sm font-medium mb-2">
+                  Ramp-down Duration (years): {splurgeRampDownYears}
+                  <InfoTooltip text="Gradually reduce splurge spending to $0 over this many years after main splurge period ends. Linear decline." />
+                </label>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="15" 
+                  step="1"
+                  value={splurgeRampDownYears} 
+                  onChange={(e) => setSplurgeRampDownYears(Number(e.target.value))} 
+                  className="w-full" 
+                />
+                <p className="text-xs text-gray-600 mt-1">
+                  {splurgeRampDownYears === 0 
+                    ? 'No ramp-down - splurge stops immediately after main period' 
+                    : `Spending declines from ${formatCurrency(splurgeAmount)} to $0 over ${splurgeRampDownYears} years`}
+                </p>
+              </div>
+
               
               <div className="mt-4 p-4 bg-gray-50 rounded">
                 {splurgeSummary.enabled ? (
                   <div className="space-y-1 text-sm">
                     <div className="font-semibold text-gray-900">Splurge Summary</div>
-                    <div><strong>Total splurge:</strong> {formatCurrency(splurgeSummary.totalSplurge)}</div>
+                    <div><strong>Main splurge total:</strong> {formatCurrency(splurgeSummary.totalSplurge)}</div>
                     <div><strong>Active period:</strong> {splurgeSummary.activePeriod}</div>
-                    <div><strong>Annual impact:</strong> {splurgeSummary.annualImpact}</div>
+                    <div><strong>Peak annual impact:</strong> {splurgeSummary.annualImpact}</div>
+                    {splurgeSummary.rampDownPeriod && (
+                      <>
+                        <div className="pt-2 border-t border-gray-300 mt-2">
+                          <strong>Ramp-down period:</strong> {splurgeSummary.rampDownPeriod}
+                        </div>
+                        <div>
+                          <strong>Ramp-down total:</strong> {formatCurrency(splurgeSummary.totalWithRampDown - splurgeSummary.totalSplurge)}
+                        </div>
+                        <div className="pt-2 border-t border-gray-300">
+                          <strong>Combined total:</strong> {formatCurrency(splurgeSummary.totalWithRampDown)}
+                        </div>
+                        <div className="text-xs text-gray-600 mt-1 italic">
+                          💡 Spending gradually decreases from {formatCurrency(splurgeAmount)} to $0 over {splurgeRampDownYears} years
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="text-sm text-gray-600">{splurgeSummary.message}</div>
@@ -3125,7 +3208,7 @@ if (!isMounted) {
         )}
 
        <div className="text-center text-sm text-gray-600 mt-6">
-         Australian Retirement Planning Tool v14.8 ·{' '}
+         Australian Retirement Planning Tool v14.9 ·{' '}
          <a
            href="mailto:aust-retirement-calculator@proton.me"
            className="underline"
