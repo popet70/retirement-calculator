@@ -1265,7 +1265,7 @@ const RetirementCalculator = () => {
       'Spending': toDisplayValue(r.spending, r.year, r.cpiRate),
       'Income': toDisplayValue(r.income, r.year, r.cpiRate)
     }));
-  }, [simulationResults, showNominalDollars]);
+  }, [simulationResults, showNominalDollars, inflationRate]);
 
   const pensionChartData = useMemo(() => {
     if (!simulationResults) return [];
@@ -1275,7 +1275,7 @@ const RetirementCalculator = () => {
       'PSS/CSS Pension': toDisplayValue(r.pensionIncome, r.year, r.cpiRate),
       'Total Income': toDisplayValue(r.income, r.year, r.cpiRate)
     }));
-  }, [simulationResults, showNominalDollars]);
+  }, [simulationResults, showNominalDollars, inflationRate]);
 
   const exportDetailedCSV = () => {
     if (!simulationResults || simulationResults.length === 0) {
