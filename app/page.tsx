@@ -562,7 +562,7 @@ const RetirementCalculator = () => {
         spendingAdjustedForSingle = false;
       }
       
-      // GUARDRAILS (controls discretionary spending: base + splurge)
+     // GUARDRAILS (controls discretionary spending: base + splurge)
 // Protected spending (pension, medical, one-offs, aged care, debt) is NOT subject to guardrails
 let guardrailAdjustedSplurge = 0; // Track splurge adjustment from guardrails
 
@@ -608,30 +608,35 @@ if (useGuardrails && year > 1) {
     // Floor is pension income (in real terms)
     const discretionaryFloor = totalPensionIncome;
     
-    // Apply floor
+    // CRITICAL FIX: Apply floor BEFORE allocating between base and splurge
     const finalDiscretionary = Math.max(proposedDiscretionary, discretionaryFloor);
     
-    // Allocate the cut between base and splurge proportionally
-    if (currentSplurgeAmount > 0 && discretionarySpending > 0) {
+    // Now allocate between base and splurge
+    if (finalDiscretionary <= discretionaryFloor) {
+      // At or below floor - base gets all, splurge eliminated
+      currentSpendingBase = discretionaryFloor;
+      guardrailAdjustedSplurge = 0;
+    } else if (currentSplurgeAmount > 0) {
+      // Above floor with splurge - cut both proportionally
       const baseRatio = currentSpendingBase / discretionarySpending;
       const splurgeRatio = currentSplurgeAmount / discretionarySpending;
       
-      // If we hit the floor, base gets the floor, splurge gets eliminated
-      if (finalDiscretionary <= discretionaryFloor) {
+      currentSpendingBase = finalDiscretionary * baseRatio;
+      guardrailAdjustedSplurge = finalDiscretionary * splurgeRatio;
+      
+      // ADDITIONAL FIX: Ensure base never goes below floor even after proportional allocation
+      if (currentSpendingBase < discretionaryFloor) {
         currentSpendingBase = discretionaryFloor;
-        guardrailAdjustedSplurge = 0; // Splurge eliminated
-      } else {
-        // Both base and splurge are cut proportionally
-        currentSpendingBase = finalDiscretionary * baseRatio;
-        guardrailAdjustedSplurge = finalDiscretionary * splurgeRatio;
+        guardrailAdjustedSplurge = Math.max(0, finalDiscretionary - discretionaryFloor);
       }
     } else {
-      // No splurge, just cut base
-      currentSpendingBase = Math.max(finalDiscretionary, discretionaryFloor);
+      // Above floor, no splurge - all goes to base
+      currentSpendingBase = finalDiscretionary;
       guardrailAdjustedSplurge = 0;
     }
   } else {
     // No guardrail trigger - use normal splurge
+    guardrailStatus = 'normal';
     guardrailAdjustedSplurge = currentSplurgeAmount;
   }
 } else {
