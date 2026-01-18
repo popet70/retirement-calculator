@@ -562,62 +562,101 @@ const RetirementCalculator = () => {
         spendingAdjustedForSingle = false;
       }
       
-      // GUARDRAILS (now uses correct spending base after aged care adjustment)
-      if (useGuardrails && year > 1) {
-        const currentPortfolio = mainSuper + seqBuffer + cashAccount;
-        // Compare withdrawal rates in REAL terms
-        const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
-        
-        // Calculate total planned spending for this year (base + splurge if applicable)
-        let totalPlannedSpending = currentSpendingBase;
-        if (splurgeAmount > 0) {
-          const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-          if (age >= splurgeStartAge && age <= splurgeEndAge) {
-            totalPlannedSpending += splurgeAmount;
-          }
-        }
-        
-        const currentWithdrawalRate = totalPlannedSpending / realPortfolio;
-        const safeWithdrawalRate = initialWithdrawalRate;
-        const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
+      // GUARDRAILS (controls discretionary spending: base + splurge)
+// Protected spending (pension, medical, one-offs, aged care, debt) is NOT subject to guardrails
+let guardrailAdjustedSplurge = 0; // Track splurge adjustment from guardrails
+
+if (useGuardrails && year > 1) {
+  const currentPortfolio = mainSuper + seqBuffer + cashAccount;
+  // Compare withdrawal rates in REAL terms
+  const realPortfolio = currentPortfolio / Math.pow(1 + cpiRate / 100, year - 1);
   
+  // Calculate DISCRETIONARY spending (base + splurge) - this is what guardrails control
+  let discretionarySpending = currentSpendingBase;
+  let currentSplurgeAmount = 0;
+  
+  if (splurgeAmount > 0) {
+    const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+    const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
+    
+    if (age >= splurgeStartAge && age <= splurgeEndAge) {
+      currentSplurgeAmount = splurgeAmount;
+    } else if (splurgeRampDownYears > 0 && age > splurgeEndAge && age <= rampDownEndAge) {
+      const yearsIntoRampDown = age - splurgeEndAge;
+      const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
+      currentSplurgeAmount = splurgeAmount * rampDownFraction;
+    }
+  }
+  
+  discretionarySpending += currentSplurgeAmount;
+  
+  const currentWithdrawalRate = discretionarySpending / realPortfolio;
+  const safeWithdrawalRate = initialWithdrawalRate;
+  const withdrawalRateRatio = (currentWithdrawalRate / safeWithdrawalRate) * 100;
+
   if (withdrawalRateRatio <= 100 - upperGuardrail) {
     guardrailStatus = 'increase';
+    // Only increase base spending, not splurge (splurge is a fixed plan)
     currentSpendingBase = currentSpendingBase * (1 + guardrailAdjustment / 100);
+    guardrailAdjustedSplurge = currentSplurgeAmount; // Splurge unchanged
   } else if (withdrawalRateRatio >= 100 + lowerGuardrail) {
     guardrailStatus = 'decrease';
-    const proposedSpending = currentSpendingBase * (1 - guardrailAdjustment / 100);
-    const spendingMultiplier = getSpendingMultiplier(year);
-    const indexedPensionFloor = totalPensionIncome / spendingMultiplier;
-    currentSpendingBase = Math.max(proposedSpending, indexedPensionFloor);
+    
+    // Proposed discretionary spending after cut
+    const proposedDiscretionary = discretionarySpending * (1 - guardrailAdjustment / 100);
+    
+    // Floor is pension income (in real terms)
+    const discretionaryFloor = totalPensionIncome;
+    
+    // Apply floor
+    const finalDiscretionary = Math.max(proposedDiscretionary, discretionaryFloor);
+    
+    // Allocate the cut between base and splurge proportionally
+    if (currentSplurgeAmount > 0 && discretionarySpending > 0) {
+      const baseRatio = currentSpendingBase / discretionarySpending;
+      const splurgeRatio = currentSplurgeAmount / discretionarySpending;
+      
+      // If we hit the floor, base gets the floor, splurge gets eliminated
+      if (finalDiscretionary <= discretionaryFloor) {
+        currentSpendingBase = discretionaryFloor;
+        guardrailAdjustedSplurge = 0; // Splurge eliminated
+      } else {
+        // Both base and splurge are cut proportionally
+        currentSpendingBase = finalDiscretionary * baseRatio;
+        guardrailAdjustedSplurge = finalDiscretionary * splurgeRatio;
+      }
+    } else {
+      // No splurge, just cut base
+      currentSpendingBase = Math.max(finalDiscretionary, discretionaryFloor);
+      guardrailAdjustedSplurge = 0;
+    }
+  } else {
+    // No guardrail trigger - use normal splurge
+    guardrailAdjustedSplurge = currentSplurgeAmount;
+  }
+} else {
+  // Guardrails not enabled or year 1 - calculate normal splurge
+  if (splurgeAmount > 0) {
+    const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+    const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
+    
+    if (age >= splurgeStartAge && age <= splurgeEndAge) {
+      guardrailAdjustedSplurge = splurgeAmount;
+    } else if (splurgeRampDownYears > 0 && age > splurgeEndAge && age <= rampDownEndAge) {
+      const yearsIntoRampDown = age - splurgeEndAge;
+      const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
+      guardrailAdjustedSplurge = splurgeAmount * rampDownFraction;
+    }
   }
 }
       
-      const spendingMultiplier = getSpendingMultiplier(year);
-      
-      // Calculate base spending in real terms including splurge
-      let realBaseSpending = currentSpendingBase;
-      
-      // Add splurge to base if within the splurge period (in real terms)
-      if (splurgeAmount > 0) {
-        const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-        const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
-        
-        if (age >= splurgeStartAge && age <= splurgeEndAge) {
-          // Full splurge period
-          realBaseSpending += splurgeAmount;
-        } else if (splurgeRampDownYears > 0 && age > splurgeEndAge && age <= rampDownEndAge) {
-          // Ramp-down period - linear decline from splurgeAmount to 0
-          const yearsIntoRampDown = age - splurgeEndAge;
-          const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
-          const rampDownAmount = splurgeAmount * rampDownFraction;
-          realBaseSpending += rampDownAmount;
-        }
-      }
+const spendingMultiplier = getSpendingMultiplier(year);
 
-      
-      // Now inflate this combined base to nominal terms
-      const inflationAdjustedSpending = realBaseSpending * Math.pow(1 + cpiRate / 100, year - 1);
+// Calculate discretionary spending (base + guardrail-adjusted splurge) in real terms
+let realDiscretionarySpending = currentSpendingBase + guardrailAdjustedSplurge;
+
+// Now inflate discretionary spending to nominal terms
+const inflationAdjustedSpending = realDiscretionarySpending * Math.pow(1 + cpiRate / 100, year - 1);
       
       // Additional costs not subject to guardrails
       let additionalCosts = 0;
@@ -1359,23 +1398,57 @@ const RetirementCalculator = () => {
       const actualSpendingMultiplier = getSpendingMultiplier(r.year);
       const currentSpendingBaseReal = r.currentSpendingBase || baseSpending;
       
-     // Calculate splurge with ramp-down
-      let splurgeAddition = 0;
-      if (splurgeAmount > 0) {
-        const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
-        const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
-        
-        if (r.age >= splurgeStartAge && r.age <= splurgeEndAge) {
-          // Full splurge period
-          splurgeAddition = splurgeAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1);
-        } else if (splurgeRampDownYears > 0 && r.age > splurgeEndAge && r.age <= rampDownEndAge) {
-          // Ramp-down period
-          const yearsIntoRampDown = r.age - splurgeEndAge;
-          const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
-          const rampDownAmount = splurgeAmount * rampDownFraction;
-          splurgeAddition = rampDownAmount * Math.pow(1 + r.cpiRate / 100, r.year - 1);
-        }
-      }
+     // Calculate splurge (in REAL terms for CSV display - shows what was actually used after guardrails)
+// This is tricky because we need to back-calculate what the guardrails did
+let splurgeAddition = 0;
+
+// First calculate the "planned" splurge
+let plannedSplurge = 0;
+if (splurgeAmount > 0) {
+  const splurgeEndAge = splurgeStartAge + splurgeDuration - 1;
+  const rampDownEndAge = splurgeEndAge + splurgeRampDownYears;
+  
+  if (r.age >= splurgeStartAge && r.age <= splurgeEndAge) {
+    plannedSplurge = splurgeAmount;
+  } else if (splurgeRampDownYears > 0 && r.age > splurgeEndAge && r.age <= rampDownEndAge) {
+    const yearsIntoRampDown = r.age - splurgeEndAge;
+    const rampDownFraction = 1 - (yearsIntoRampDown / splurgeRampDownYears);
+    plannedSplurge = splurgeAmount * rampDownFraction;
+  }
+}
+
+// If guardrails cut spending, we need to show the ACTUAL splurge used
+// The actual splurge is embedded in r.spending, so we back-calculate it
+if (useGuardrails && plannedSplurge > 0) {
+  // Total discretionary in real terms = (inflationAdjustedSpending from sim) / inflation factor
+  const currentSpendingBaseReal = r.currentSpendingBase || baseSpending;
+  
+  // Check if we're at pension floor (splurge was eliminated)
+  if (currentSpendingBaseReal <= totalPensionIncome && r.guardrailStatus === 'decrease') {
+    splurgeAddition = 0; // Splurge was cut to zero
+  } else {
+    // Back-calculate actual splurge from spending
+    // Total spending = (base + actual_splurge) * inflation * multiplier + protected_costs
+    const inflationFactor = Math.pow(1 + r.cpiRate / 100, r.year - 1);
+    const actualSpendingMultiplier = getSpendingMultiplier(r.year);
+    
+    // Remove protected costs from total spending
+    const healthShockCost = (r.year >= 15) ? 30000 * inflationFactor : 0;
+    const oneOffTotal = oneOffExpenses.filter(e => e.age === r.age).reduce((sum, e) => sum + e.amount, 0);
+    const agedCareAnnual = r.agedCareAnnualCost || 0;
+    const debtPayment = r.debtPayment || 0;
+    const protectedCosts = healthShockCost + oneOffTotal + agedCareAnnual + debtPayment;
+    
+    const discretionaryNominal = r.spending - protectedCosts;
+    const discretionaryReal = discretionaryNominal / (inflationFactor * actualSpendingMultiplier);
+    
+    // Actual splurge = discretionary - base
+    splurgeAddition = Math.max(0, discretionaryReal - currentSpendingBaseReal);
+  }
+} else {
+  // No guardrails or no splurge - use planned amount
+  splurgeAddition = plannedSplurge;
+}
 
       
       // Calculate one-offs
